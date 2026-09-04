@@ -1,0 +1,94 @@
+import { assertEquals } from '@std/assert';
+import { render } from './render.ts';
+
+const risk = {
+  id: 'OVER_ALLOCATED:u_10024',
+  severity: 'critical' as const,
+  title: 'M. Ferreira — 140% allocated',
+  detail: '80% on Veridia + 60% on Corvane against a 40h/week capacity.',
+  rationale: 'This creates an immediate capacity conflict across both active projects.',
+  sources: ['kantata:allocations/a_9001', 'kantata:allocations/a_9002', 'kantata:users/u_10024'],
+  ambiguous: false,
+  group: { kind: 'person' as const, id: 'u_10024', label: 'M. Ferreira' },
+};
+
+const question = {
+  id: 'SCALE_AMBIGUOUS:a_9004',
+  severity: 'watch' as const,
+  title: 'Quillspace — Devika Balasubramanian',
+  detail:
+    "Kantata lists Devika's allocation as 0.25, while most allocations use values like 50 or " +
+    "80.\nIt's unclear whether 0.25 means 0.25% or 25%, so Devika's workload can't be " +
+    'calculated reliably.',
+  rationale: '',
+  sources: ['kantata:allocations/a_9004'],
+  ambiguous: true,
+  group: { kind: 'person' as const, id: 'u_10024', label: 'M. Ferreira' },
+};
+
+Deno.test('renders a compact risk and question digest', () => {
+  const message = render({
+    findings: [risk, question],
+    referenceDate: '2026-08-19',
+    degradedSources: [],
+  });
+  assertEquals(
+    message,
+    [
+      '🚨 Staffing check — 19 Aug 2026',
+      '1 risk needs attention · 1 item needs review',
+      '',
+      '• M. Ferreira — 140% allocated',
+      '  80% on Veridia + 60% on Corvane against a 40h/week capacity.',
+      '',
+      '────────────────────',
+      'Needs review',
+      '',
+      '• Quillspace — Devika Balasubramanian',
+      "  Kantata lists Devika's allocation as 0.25, while most allocations use values like 50 or 80.",
+      "  It's unclear whether 0.25 means 0.25% or 25%, so Devika's workload can't be calculated reliably.",
+    ].join('\n'),
+  );
+});
+
+Deno.test('renders plural risk counts without an empty review section', () => {
+  const message = render({
+    findings: [risk, { ...risk, title: 'A second risk' }],
+    referenceDate: '2026-08-19',
+    degradedSources: [],
+  });
+  assertEquals(
+    message,
+    [
+      '🚨 Staffing check — 19 Aug 2026',
+      '2 risks need attention · 0 items need review',
+      '',
+      '• M. Ferreira — 140% allocated',
+      '  80% on Veridia + 60% on Corvane against a 40h/week capacity.',
+      '',
+      '• A second risk',
+      '  80% on Veridia + 60% on Corvane against a 40h/week capacity.',
+    ].join('\n'),
+  );
+});
+
+Deno.test('keeps degraded-source warnings at the bottom', () => {
+  const message = render({
+    findings: [risk, question],
+    referenceDate: '2026-08-19',
+    degradedSources: ['/kantata/time_entries'],
+  });
+  assertEquals(message.includes('a_9001'), false);
+  assertEquals(message.endsWith('⚠️ Incomplete data: /kantata/time_entries unavailable.'), true);
+});
+
+Deno.test('renders nothing when only source degradation occurred', () => {
+  assertEquals(
+    render({
+      findings: [],
+      referenceDate: '2026-08-19',
+      degradedSources: ['/kantata/time_entries'],
+    }),
+    '',
+  );
+});
