@@ -11,6 +11,22 @@ function readable(body: unknown, status = 200): Response {
   });
 }
 
+/** Shared by the /run route and Deno.cron so both go through one path and update `lastRun`. */
+export async function triggerRun(
+  options: { dryRun: boolean; demo: boolean },
+): Promise<{ at: string; result: object }> {
+  const at = new Date().toISOString();
+  try {
+    const result = await runStaffingCheck({ config: runtimeConfig(), ...options });
+    lastRun = { at, result };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Run failed';
+    lastRun = { at, result: { error: message } };
+    console.error(JSON.stringify({ event: 'staffing_check_failed', at }));
+  }
+  return lastRun;
+}
+
 export async function handle(req: Request): Promise<Response> {
   const url = new URL(req.url);
 
@@ -35,26 +51,13 @@ export async function handle(req: Request): Promise<Response> {
   }
 
   if (req.method === 'GET' && url.pathname === '/run') {
-    const at = new Date().toISOString();
     const dryRun = url.searchParams.get('dry') === '1';
     const demo = url.searchParams.get('demo') === '1';
     if (demo && !dryRun) {
       return readable({ error: 'Demo runs require dry=1.' }, 400);
     }
-    try {
-      const result = await runStaffingCheck({
-        config: runtimeConfig(),
-        dryRun,
-        demo,
-      });
-      lastRun = { at, result };
-      return readable(lastRun);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Run failed';
-      lastRun = { at, result: { error: message } };
-      console.error(JSON.stringify({ event: 'staffing_check_failed', at }));
-      return readable({ error: message }, 500);
-    }
+    const run = await triggerRun({ dryRun, demo });
+    return readable(run, 'error' in run.result ? 500 : 200);
   }
 
   return new Response('Not found', { status: 404 });
