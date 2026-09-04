@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Three systems, no shared key</title>
+  <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --color-paper:       #f5f5f5;
+      --color-paper-2:     #ececec;
+      --color-ink:         #2d3142;
+      --color-muted:       #4f5d75;
+      --color-soft:        #7a8399;
+      --color-rule:        rgba(45,49,66,0.12);
+      --color-accent:      #eb6c36;
+      --color-link:        #2e5aa8;
+      --font-sans:   'Geist', system-ui, sans-serif;
+      --font-serif:  'Instrument Serif', 'Times New Roman', serif;
+      --font-mono:   'Geist Mono', ui-monospace, Menlo, monospace;
+    }
+    body { font-family: var(--font-sans); background: var(--color-paper); min-height: 100vh; padding: 3rem 2rem; color: var(--color-ink); }
+    .container { max-width: 1200px; margin: 0 auto; }
+    .header { margin-bottom: 2.5rem; }
+    .header-eyebrow { font-family: var(--font-mono); font-size: 0.66rem; font-weight: 500; letter-spacing: 0.18em; text-transform: uppercase; color: var(--color-muted); margin-bottom: 0.75rem; }
+    h1 { font-family: var(--font-serif); font-size: clamp(1.75rem, 3vw + 1rem, 2.5rem); font-weight: 400; letter-spacing: -0.02em; line-height: 1.1; margin-bottom: 0.5rem; }
+    .subtitle { font-size: 1rem; line-height: 1.55; color: var(--color-muted); max-width: 60ch; }
+    .diagram-container { background: transparent; border: none; padding: 0; overflow-x: auto; }
+    svg { width: 100%; min-width: 1464px; display: block; }
+    .cards { display: grid; grid-template-columns: 1.1fr 1.1fr 0.9fr; gap: 1rem; margin-top: 2rem; }
+    @media (max-width: 900px) { .cards { grid-template-columns: 1fr; } }
+    .card { background: #ffffff; border-radius: 6px; border: 1px solid var(--color-rule); padding: 1.25rem; }
+    .card .eyebrow { font-family: var(--font-mono); font-size: 0.6rem; letter-spacing: 0.14em; text-transform: uppercase; color: var(--color-soft); margin-bottom: 0.6rem; }
+    .card-header { display: flex; align-items: center; gap: 0.6rem; margin-bottom: 0.875rem; padding-bottom: 0.875rem; border-bottom: 1px solid rgba(45,49,66,0.08); }
+    .card-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+    .card-dot.ink { background: var(--color-ink); }
+    .card-dot.muted { background: var(--color-muted); }
+    .card-dot.coral { background: var(--color-accent); }
+    .card h3 { font-size: 0.875rem; font-weight: 600; letter-spacing: -0.005em; }
+    .card ul { list-style: none; color: var(--color-muted); font-size: 0.8125rem; line-height: 1.55; }
+    .card li { margin-bottom: 0.35rem; padding-left: 0.875rem; position: relative; }
+    .card li::before { content: '—'; position: absolute; left: 0; color: rgba(45,49,66,0.25); font-size: 0.75rem; }
+    .card code { font-family: var(--font-mono); font-size: 0.72rem; color: var(--color-ink); }
+    .aside { font-family: var(--font-serif); font-style: italic; font-size: 0.95rem; color: var(--color-muted); margin-top: 1.5rem; max-width: 68ch; line-height: 1.5; }
+    .footer { margin-top: 2rem; padding-top: 1.5rem; border-top: 1px solid rgba(45,49,66,0.10); font-family: var(--font-mono); font-size: 0.72rem; letter-spacing: 0.06em; color: var(--color-soft); display: flex; justify-content: space-between; flex-wrap: wrap; gap: 0.5rem; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <p class="header-eyebrow">Staffing Risk Agent · Data Model</p>
+      <h1>Three systems, no shared key</h1>
+      <p class="subtitle">Kantata, Salesforce and ClickUp share nothing but an email address. Everything downstream of <code>model-record.ts</code> is one outer union on that address, a hand-maintained client map, and a short list of joins the code deliberately refuses to make.</p>
+    </div>
+    <div class="diagram-container">
+      <svg viewBox="0 0 1464 624" role="img" aria-labelledby="data-model-title data-model-desc">
+        <title id="data-model-title">Three systems, no shared key</title>
+        <desc id="data-model-desc">ER diagram showing ten raw Kantata, Salesforce and ClickUp collections joined into seven normalized model entities, keyed on email with no identifier shared across systems, and marking which joins the code makes versus deliberately withholds.</desc>
+        <defs>
+          <marker id="arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+            <polygon points="0 0, 8 3, 0 6" fill="#4f5d75"/>
+          </marker>
+          <marker id="arrow-accent" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+            <polygon points="0 0, 8 3, 0 6" fill="#eb6c36"/>
+          </marker>
+          <marker id="arrow-link" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+            <polygon points="0 0, 8 3, 0 6" fill="#2e5aa8"/>
+          </marker>
+        </defs>
+
+        <rect width="1464" height="624" fill="#f5f5f5"/>
+
+        <!-- zone labels -->
+        <text x="24" y="40" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" font-weight="500" letter-spacing="0.18em">SOURCE COLLECTIONS</text>
+        <text x="340" y="40" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" font-weight="500" letter-spacing="0.18em">NORMALIZED</text>
+
+        <!-- zone divider -->
+        <line x1="304" y1="64" x2="304" y2="560" stroke="#bfc0c0" stroke-width="0.8"/>
+
+        <!-- ============ ARROWS (drawn before boxes) ============ -->
+
+        <!-- E1 (accent x3): source containers -> Person, NORM. EMAIL -->
+        <path d="M268,136 H296 Q304,136 304,144 V248 Q304,256 312,256 H340"
+              fill="none" stroke="#eb6c36" stroke-width="1" marker-end="url(#arrow-accent)"/>
+        <path d="M268,280 H296 Q304,280 304,288 V296 Q304,304 312,304 H340"
+              fill="none" stroke="#eb6c36" stroke-width="1" marker-end="url(#arrow-accent)"/>
+        <path d="M268,400 H296 Q304,400 304,392 V360 Q304,352 312,352 H340"
+              fill="none" stroke="#eb6c36" stroke-width="1" marker-end="url(#arrow-accent)"/>
+        <rect x="272" y="312" width="64" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="304" y="321" fill="#eb6c36" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.04em">NORM. EMAIL</text>
+
+        <!-- E4: ModelAllocation -> Person, personIndex -->
+        <path d="M700,216 V232 Q700,240 692,240 H572"
+              fill="none" stroke="#4f5d75" stroke-width="1" marker-end="url(#arrow)"/>
+        <rect x="608" y="220" width="56" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="636" y="229" fill="#7a8399" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.04em">personIndex</text>
+
+        <!-- E5: ModelTimeOff -> Person, userId -->
+        <path d="M628,320 H580 Q572,320 572,312 V304"
+              fill="none" stroke="#4f5d75" stroke-width="1" marker-end="url(#arrow)"/>
+        <rect x="584" y="300" width="40" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="604" y="309" fill="#7a8399" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.04em">userId</text>
+
+        <!-- E8 (dashed): ModelTask -> Person, NEVER JOINED -->
+        <path d="M628,460 H608 Q600,460 600,452 V376 Q600,368 592,368 H572"
+              fill="none" stroke="#4f5d75" stroke-width="1" stroke-dasharray="5,4" marker-end="url(#arrow)"/>
+        <rect x="608" y="408" width="48" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="632" y="417" fill="#7a8399" font-size="7" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.03em">NEVER JOINED</text>
+
+        <!-- E3: ModelAllocation -> ModelProject, projectId / MAY DANGLE -->
+        <path d="M860,140 L916,140" fill="none" stroke="#4f5d75" stroke-width="1" marker-end="url(#arrow)"/>
+        <rect x="864" y="120" width="48" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="888" y="129" fill="#7a8399" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.04em">projectId</text>
+        <rect x="864" y="104" width="48" height="8" rx="2" fill="#f5f5f5"/>
+        <text x="888" y="111" fill="#7a8399" font-size="7" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.03em" font-style="italic">MAY DANGLE</text>
+
+        <!-- E2 (accent): ModelProject -> ModelAccount, CLIENT MAP -->
+        <path d="M1148,100 L1204,100" fill="none" stroke="#eb6c36" stroke-width="1" marker-end="url(#arrow-accent)"/>
+        <rect x="1152" y="80" width="48" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="1176" y="89" fill="#eb6c36" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.04em">CLIENT MAP</text>
+
+        <!-- E7 (dashed): ModelOpportunity -> ModelProject, LLM LINK -->
+        <path d="M1224,232 Q1224,224 1216,224 H1040 Q1032,224 1032,216"
+              fill="none" stroke="#4f5d75" stroke-width="1" stroke-dasharray="5,4" marker-end="url(#arrow)"/>
+        <rect x="1152" y="204" width="48" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="1176" y="213" fill="#7a8399" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.04em">LLM LINK</text>
+
+        <!-- E6: ModelOpportunity -> ModelAccount, accountId -->
+        <path d="M1320,232 L1320,168" fill="none" stroke="#4f5d75" stroke-width="1" marker-end="url(#arrow)"/>
+        <rect x="1328" y="192" width="52" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="1354" y="201" fill="#7a8399" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.04em">accountId</text>
+
+        <!-- ============ LEFT GUTTER: source containers ============ -->
+
+        <!-- Kantata -->
+        <rect x="24" y="72" width="244" height="128" rx="6" fill="#f5f5f5"/>
+        <rect x="24" y="72" width="244" height="128" rx="6" fill="rgba(45,49,66,0.03)" stroke="rgba(45,49,66,0.30)" stroke-width="1"/>
+        <text x="36" y="94" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif">KANTATA</text>
+        <line x1="24" y1="104" x2="268" y2="104" stroke="rgba(45,49,66,0.12)" stroke-width="0.8"/>
+        <circle cx="40" cy="128" r="3" fill="#2d3142"/>
+        <text x="52" y="132" fill="#2d3142" font-size="8" font-family="'Geist Mono', monospace">users</text>
+        <circle cx="40" cy="144" r="3" fill="#2d3142"/>
+        <text x="52" y="148" fill="#2d3142" font-size="8" font-family="'Geist Mono', monospace">projects</text>
+        <circle cx="40" cy="160" r="3" fill="#2d3142"/>
+        <text x="52" y="164" fill="#2d3142" font-size="8" font-family="'Geist Mono', monospace">allocations</text>
+        <circle cx="40" cy="176" r="3" fill="none" stroke="#7a8399" stroke-width="0.8"/>
+        <text x="52" y="180" fill="#7a8399" font-size="8" font-family="'Geist Mono', monospace">time_off</text>
+        <circle cx="40" cy="192" r="3" fill="none" stroke="#7a8399" stroke-width="0.8"/>
+        <text x="52" y="196" fill="#7a8399" font-size="8" font-family="'Geist Mono', monospace">time_entries</text>
+
+        <!-- Salesforce -->
+        <rect x="24" y="232" width="244" height="96" rx="6" fill="#f5f5f5"/>
+        <rect x="24" y="232" width="244" height="96" rx="6" fill="rgba(45,49,66,0.03)" stroke="rgba(45,49,66,0.30)" stroke-width="1"/>
+        <text x="36" y="254" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif">SALESFORCE</text>
+        <line x1="24" y1="264" x2="268" y2="264" stroke="rgba(45,49,66,0.12)" stroke-width="0.8"/>
+        <circle cx="40" cy="276" r="3" fill="none" stroke="#7a8399" stroke-width="0.8"/>
+        <text x="52" y="280" fill="#7a8399" font-size="8" font-family="'Geist Mono', monospace">accounts</text>
+        <circle cx="40" cy="292" r="3" fill="none" stroke="#7a8399" stroke-width="0.8"/>
+        <text x="52" y="296" fill="#7a8399" font-size="8" font-family="'Geist Mono', monospace">users</text>
+        <circle cx="40" cy="308" r="3" fill="none" stroke="#7a8399" stroke-width="0.8"/>
+        <text x="52" y="312" fill="#7a8399" font-size="8" font-family="'Geist Mono', monospace">opportunities</text>
+
+        <!-- ClickUp -->
+        <rect x="24" y="360" width="244" height="80" rx="6" fill="#f5f5f5"/>
+        <rect x="24" y="360" width="244" height="80" rx="6" fill="rgba(45,49,66,0.03)" stroke="rgba(45,49,66,0.30)" stroke-width="1"/>
+        <text x="36" y="382" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif">CLICKUP</text>
+        <line x1="24" y1="392" x2="268" y2="392" stroke="rgba(45,49,66,0.12)" stroke-width="0.8"/>
+        <circle cx="40" cy="404" r="3" fill="none" stroke="#7a8399" stroke-width="0.8"/>
+        <text x="52" y="408" fill="#7a8399" font-size="8" font-family="'Geist Mono', monospace">members</text>
+        <circle cx="40" cy="420" r="3" fill="none" stroke="#7a8399" stroke-width="0.8"/>
+        <text x="52" y="424" fill="#7a8399" font-size="8" font-family="'Geist Mono', monospace">tasks · paginated</text>
+
+        <!-- ============ RIGHT ZONE: normalized entities ============ -->
+
+        <!-- Person -->
+        <rect x="340" y="224" width="232" height="160" rx="6" fill="#f5f5f5"/>
+        <rect x="340" y="224" width="232" height="160" rx="6" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+        <rect x="352" y="232" width="48" height="12" rx="2" fill="transparent" stroke="rgba(45,49,66,0.40)" stroke-width="0.8"/>
+        <text x="376" y="241" fill="rgba(45,49,66,0.8)" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">ENTITY</text>
+        <text x="408" y="242" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif">Person</text>
+        <line x1="340" y1="256" x2="572" y2="256" stroke="rgba(45,49,66,0.12)" stroke-width="0.8"/>
+        <text x="352" y="272" fill="#2d3142" font-size="8" font-family="'Geist Mono', monospace"># email: string</text>
+        <text x="352" y="288" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace">kantataUserId?: string</text>
+        <text x="352" y="304" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace">salesforceUserId?: string</text>
+        <text x="352" y="320" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace">clickupMemberId?: number</text>
+        <text x="352" y="336" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace">weeklyCapacityHours?: number</text>
+        <text x="352" y="352" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace">isExternal: boolean</text>
+        <text x="352" y="368" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace">isActive: boolean</text>
+
+        <!-- ModelAllocation -->
+        <rect x="628" y="72" width="232" height="144" rx="6" fill="#f5f5f5"/>
+        <rect x="628" y="72" width="232" height="144" rx="6" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+        <rect x="640" y="80" width="48" height="12" rx="2" fill="transparent" stroke="rgba(45,49,66,0.40)" stroke-width="0.8"/>
+        <text x="664" y="89" fill="rgba(45,49,66,0.8)" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">ENTITY</text>
+        <text x="696" y="90" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif">ModelAllocation</text>
+        <line x1="628" y1="104" x2="860" y2="104" stroke="rgba(45,49,66,0.12)" stroke-width="0.8"/>
+        <text x="640" y="120" fill="#2d3142" font-size="8" font-family="'Geist Mono', monospace"># id: string</text>
+        <text x="640" y="136" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace">→ projectId: string</text>
+        <text x="640" y="152" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace">→ userId: string</text>
+        <text x="640" y="168" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace">percentage: number</text>
+        <text x="640" y="184" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace">startDate: string</text>
+        <text x="640" y="200" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace">endDate: string</text>
+
+        <!-- ModelProject -->
+        <rect x="916" y="72" width="232" height="144" rx="6" fill="#f5f5f5"/>
+        <rect x="916" y="72" width="232" height="144" rx="6" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+        <rect x="928" y="80" width="48" height="12" rx="2" fill="transparent" stroke="rgba(45,49,66,0.40)" stroke-width="0.8"/>
+        <text x="952" y="89" fill="rgba(45,49,66,0.8)" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">ENTITY</text>
+        <text x="984" y="90" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif">ModelProject</text>
+        <line x1="916" y1="104" x2="1148" y2="104" stroke="rgba(45,49,66,0.12)" stroke-width="0.8"/>
+        <text x="928" y="120" fill="#2d3142" font-size="8" font-family="'Geist Mono', monospace"># id: string</text>
+        <text x="928" y="136" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace">clientName: string</text>
+        <text x="928" y="152" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace">status: string</text>
+        <text x="928" y="168" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace">dueDate: string</text>
+        <text x="928" y="184" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace">salesforceAccountName?: string</text>
+        <text x="928" y="200" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace">matchedDeals[]: ModelOpportunity[]</text>
+
+        <!-- ModelAccount -->
+        <rect x="1204" y="72" width="232" height="96" rx="6" fill="#f5f5f5"/>
+        <rect x="1204" y="72" width="232" height="96" rx="6" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+        <rect x="1216" y="80" width="48" height="12" rx="2" fill="transparent" stroke="rgba(45,49,66,0.40)" stroke-width="0.8"/>
+        <text x="1240" y="89" fill="rgba(45,49,66,0.8)" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">ENTITY</text>
+        <text x="1272" y="90" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif">ModelAccount</text>
+        <line x1="1204" y1="104" x2="1436" y2="104" stroke="rgba(45,49,66,0.12)" stroke-width="0.8"/>
+        <text x="1216" y="120" fill="#2d3142" font-size="8" font-family="'Geist Mono', monospace"># id: string</text>
+        <text x="1216" y="136" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace">name: string</text>
+        <text x="1216" y="152" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace">industry: string</text>
+
+        <!-- ModelTimeOff -->
+        <rect x="628" y="256" width="232" height="128" rx="6" fill="#f5f5f5"/>
+        <rect x="628" y="256" width="232" height="128" rx="6" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+        <rect x="640" y="264" width="48" height="12" rx="2" fill="transparent" stroke="rgba(45,49,66,0.40)" stroke-width="0.8"/>
+        <text x="664" y="273" fill="rgba(45,49,66,0.8)" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">ENTITY</text>
+        <text x="696" y="274" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif">ModelTimeOff</text>
+        <line x1="628" y1="288" x2="860" y2="288" stroke="rgba(45,49,66,0.12)" stroke-width="0.8"/>
+        <text x="640" y="304" fill="#2d3142" font-size="8" font-family="'Geist Mono', monospace"># id: string</text>
+        <text x="640" y="320" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace">→ userId: string</text>
+        <text x="640" y="336" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace">startDate: string</text>
+        <text x="640" y="352" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace">endDate: string</text>
+        <text x="640" y="368" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace">status: string</text>
+
+        <!-- ModelTask -->
+        <rect x="628" y="424" width="232" height="112" rx="6" fill="#f5f5f5"/>
+        <rect x="628" y="424" width="232" height="112" rx="6" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+        <rect x="640" y="432" width="48" height="12" rx="2" fill="transparent" stroke="rgba(45,49,66,0.40)" stroke-width="0.8"/>
+        <text x="664" y="441" fill="rgba(45,49,66,0.8)" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">ENTITY</text>
+        <text x="696" y="442" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif">ModelTask</text>
+        <line x1="628" y1="456" x2="860" y2="456" stroke="rgba(45,49,66,0.12)" stroke-width="0.8"/>
+        <text x="640" y="472" fill="#2d3142" font-size="8" font-family="'Geist Mono', monospace"># id: string</text>
+        <text x="640" y="488" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace">listName: string</text>
+        <text x="640" y="504" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace">assigneeIds[]: number[]</text>
+        <text x="640" y="520" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace">timeEstimateHours: number</text>
+
+        <!-- ModelOpportunity -->
+        <rect x="1204" y="232" width="232" height="144" rx="6" fill="#f5f5f5"/>
+        <rect x="1204" y="232" width="232" height="144" rx="6" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+        <rect x="1216" y="240" width="48" height="12" rx="2" fill="transparent" stroke="rgba(45,49,66,0.40)" stroke-width="0.8"/>
+        <text x="1240" y="249" fill="rgba(45,49,66,0.8)" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">ENTITY</text>
+        <text x="1272" y="250" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif">ModelOpportunity</text>
+        <line x1="1204" y1="264" x2="1436" y2="264" stroke="rgba(45,49,66,0.12)" stroke-width="0.8"/>
+        <text x="1216" y="280" fill="#2d3142" font-size="8" font-family="'Geist Mono', monospace"># id: string</text>
+        <text x="1216" y="296" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace">name: string</text>
+        <text x="1216" y="312" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace">→ accountId: string</text>
+        <text x="1216" y="328" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace">stageName: string</text>
+        <text x="1216" y="344" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace">closeDate: string</text>
+        <text x="1216" y="360" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace">estimatedDeliveryHours?: number</text>
+
+        <!-- ============ LEGEND ============ -->
+        <line x1="32" y1="568" x2="1432" y2="568" stroke="rgba(45,49,66,0.10)" stroke-width="0.8"/>
+        <text x="24" y="588" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" letter-spacing="0.14em">LEGEND</text>
+
+        <line x1="120" y1="584" x2="152" y2="584" stroke="#eb6c36" stroke-width="1"/>
+        <text x="160" y="588" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace">FOCAL JOIN</text>
+
+        <line x1="332" y1="584" x2="364" y2="584" stroke="#4f5d75" stroke-width="1"/>
+        <text x="372" y="588" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace">MODELED LINK</text>
+
+        <line x1="524" y1="584" x2="556" y2="584" stroke="#4f5d75" stroke-width="1" stroke-dasharray="5,4"/>
+        <text x="564" y="588" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace">NOT JOINED IN CODE</text>
+
+        <circle cx="768" cy="584" r="3" fill="#2d3142"/>
+        <text x="780" y="588" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace">REQUIRED SOURCE</text>
+
+        <circle cx="960" cy="584" r="3" fill="none" stroke="#7a8399" stroke-width="0.8"/>
+        <text x="972" y="588" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace">OPTIONAL SOURCE</text>
+
+        <text x="1152" y="588" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace"># PK   → FK</text>
+      </svg>
+    </div>
+    <div class="cards">
+      <div class="card">
+        <p class="eyebrow">JOIN 1 OF 3</p>
+        <div class="card-header">
+          <span class="card-dot coral"></span>
+          <h3>Joined on email, because nothing else matches</h3>
+        </div>
+        <ul>
+          <li>No shared identifier exists across Kantata, Salesforce and ClickUp</li>
+          <li>Key is <code>email.trim().toLowerCase()</code>, zod-validated</li>
+          <li>Outer union: a person may exist in one system, two, or all three</li>
+          <li>A duplicate email <em>within one provider</em> throws rather than guessing</li>
+          <li><code>isExternal</code> is derived: domain <code>!== 'gonimbly.com'</code></li>
+        </ul>
+      </div>
+      <div class="card">
+        <p class="eyebrow">JOIN 2 OF 3</p>
+        <div class="card-header">
+          <span class="card-dot coral"></span>
+          <h3>The client map is hardcoded on purpose</h3>
+        </div>
+        <ul>
+          <li>Eight entries in <code>src/clients.ts</code>, one per known client</li>
+          <li>The systems disagree: <code>Quillspace → Quillspace Software</code></li>
+          <li>And again: <code>Ironvale → Ironvale Data Group</code></li>
+          <li>ClickUp list names diverge further: <code>Halden → Halden Phase 2</code></li>
+          <li>A miss accumulates in <code>unmappedClients</code> — never fuzzy-matched, never guessed</li>
+        </ul>
+      </div>
+      <div class="card">
+        <p class="eyebrow">WHAT'S LEFT OUT</p>
+        <div class="card-header">
+          <span class="card-dot ink"></span>
+          <h3>Deliberately not joined</h3>
+        </div>
+        <ul>
+          <li>ClickUp <code>assigneeIds</code> to <code>Person.clickupMemberId</code> — activity context, never capacity</li>
+          <li><code>matchedDeals</code> is an account-level join, so it cannot prove a deal funded a project</li>
+          <li>A dangling <code>projectId</code> still counts toward the person's total, but attaches to no project</li>
+          <li>That drop lands in <code>notes[]</code> as a data-quality note, never as a finding</li>
+        </ul>
+      </div>
+    </div>
+    <p class="aside">Every join here was chosen to fail loudly rather than quietly. A duplicate email throws, an unmapped client accumulates, a dangling allocation is recorded — the one thing the code never does is invent a match.</p>
+    <div class="footer">
+      <span>STAFFING RISK AGENT · KANTATA × SALESFORCE × CLICKUP</span>
+      <span>NORMALIZED IN src/model-record.ts</span>
+    </div>
+  </div>
+</body>
+</html>
