@@ -90,20 +90,20 @@ Deno.test('an ambiguous follow-on explains the overlap in human terms', () => {
   assertEquals(
     finding?.detail,
     'Salesforce says Phase 3 could close on Aug 26 while Phase 2 is scheduled through Nov 2.\n' +
-      'If the same team is expected to support both phases, additional capacity may be needed.',
+      'Delivery hours are not estimated. When would delivery start, for how long, and with which team?',
   );
   // The inactive person is excluded from the roster behind this question.
   assertEquals(finding?.metrics.rosterSize, 1);
   assertEquals(finding?.ambiguous, true);
 });
 
-// The sized branch had no test, which is how a NaN percentage shipped: `NaN <= headroom` is
-// false, so the restraint check silently fired on every hours-bearing follow-on.
-Deno.test('a sized follow-on states a real percentage, never NaN', () => {
+Deno.test('estimated hours never turn the current project due date into a delivery deadline', () => {
   const [finding] = detectFollowOn(record(600, 100), links);
-  assertEquals(finding?.severity, 'critical');
-  assertEquals(finding?.detail.includes('NaN'), false);
-  assertEquals(Number.isFinite(finding?.metrics.requiredPct ?? NaN), true);
+  assertEquals(finding?.severity, 'watch');
+  assertEquals(finding?.ambiguous, true);
+  assertEquals(finding?.detail.includes('600 delivery hours'), true);
+  assertEquals(finding?.detail.includes('h/week'), false);
+  assertEquals(finding?.metrics, { rosterSize: 1, estimatedHours: 600 });
   assertEquals(new Set(finding?.sources).size, finding?.sources.length);
   assertEquals(finding?.group, {
     kind: 'project',
@@ -112,8 +112,8 @@ Deno.test('a sized follow-on states a real percentage, never NaN', () => {
   });
 });
 
-Deno.test('headroom that absorbs the work produces no finding at all', () => {
-  assertEquals(detectFollowOn(record(1, 10), links).length, 0);
+Deno.test('low estimated hours still need a schedule before declaring sufficient capacity', () => {
+  assertEquals(detectFollowOn(record(1, 10), links)[0]?.ambiguous, true);
 });
 
 Deno.test('follow-on ignores a roster allocation that ends before the deal closes', () => {
@@ -122,42 +122,20 @@ Deno.test('follow-on ignores a roster allocation that ends before the deal close
   assertEquals(detectFollowOn(input, links), []);
 });
 
-Deno.test('split rows for one person do not double their capacity or headroom', () => {
+Deno.test('split rows for one person do not double the roster', () => {
   const input = record(300, 50);
   input.allocations = [
     { ...input.allocations[0]!, id: 'a_1', percentage: 50 },
     { ...input.allocations[0]!, id: 'a_3', percentage: 50 },
   ];
   const [finding] = detectFollowOn(input, links);
-  assertEquals(finding?.severity, 'critical');
-  assertEquals(finding?.metrics.availableWeeklyHours, 0);
+  assertEquals(finding?.metrics.rosterSize, 1);
 });
 
-Deno.test('other active commitments consume a continuing team member’s headroom', () => {
-  const input = record(100, 50);
-  input.projects.push({
-    id: 'p_other',
-    title: 'Other commitment',
-    clientName: 'Other',
-    status: 'Active',
-    startDate: '2026-08-01',
-    dueDate: '2026-11-02',
-    budgetedHours: 1,
-    leadUserId: null,
-    salesforceAccountName: null,
-    clickupListName: null,
-    loggedHours: 0,
-    matchedDeals: [],
-  });
-  input.allocations.push({
-    id: 'a_other',
-    projectId: 'p_other',
-    userId: 'u_1',
-    percentage: 50,
-    startDate: '2026-08-01',
-    endDate: '2026-11-02',
-  });
-  assertEquals(detectFollowOn(input, links)[0]?.severity, 'critical');
+Deno.test('a sales close after the existing project ends does not suggest overlap', () => {
+  const input = record(600, 100);
+  input.opportunities[0] = { ...input.opportunities[0]!, closeDate: '2026-11-03' };
+  assertEquals(detectFollowOn(input, links), []);
 });
 
 Deno.test('ambiguous roster allocations produce a question instead of a critical claim', () => {

@@ -191,7 +191,11 @@ function stubFetch(respond: () => Response): { calls: number; fetch: typeof fetc
 
 const modelResponse = (text: string) =>
   new Response(
-    JSON.stringify({ output: [{ content: [{ type: 'output_text', text }] }] }),
+    JSON.stringify({
+      id: 'resp_test',
+      model: 'test-model-snapshot',
+      output: [{ content: [{ type: 'output_text', text }] }],
+    }),
     { status: 200, headers: { 'Content-Type': 'application/json' } },
   );
 
@@ -289,7 +293,7 @@ Deno.test('the verifier keeps one link, rejects two, and counts the null as neit
   );
   assertEquals([...links], [['006Ho00000OPP03', 'p_5004']]);
   assertEquals(rejected, 2);
-  assertEquals(rejectionReasons, { cross_client: 2 });
+  assertEquals(rejectionReasons, { cross_client: 1, duplicate_opportunity: 1 });
 });
 
 Deno.test('the verifier rejects a project marked unrelated with a safe reason', () => {
@@ -303,8 +307,8 @@ Deno.test('the verifier rejects a project marked unrelated with a safe reason', 
     record,
   );
   assertEquals(links.size, 0);
-  assertEquals(rejected, 1);
-  assertEquals(rejectionReasons, { relation_mismatch: 1 });
+  assertEquals(rejected, 3);
+  assertEquals(rejectionReasons, { relation_mismatch: 1, missing_opportunity: 2 });
 });
 
 Deno.test('a relation and project pair that violates the schema invalidates the response', async () => {
@@ -341,6 +345,31 @@ Deno.test('no candidates skips the model with a distinct status', async () => {
 Deno.test('a valid structured response completes the model path', async () => {
   const stub = stubFetch(() =>
     modelResponse(JSON.stringify({
+      links: [
+        { opportunity_id: '006Ho00000OPP02', project_id: null, relation: 'uncertain' },
+        { opportunity_id: '006Ho00000OPP03', project_id: 'p_5004', relation: 'continuation' },
+        { opportunity_id: '006Ho00000OPP08', project_id: null, relation: 'unrelated' },
+      ],
+    }))
+  );
+  const result = await linkOpportunities(record, config, stub.fetch);
+  assertEquals(result.modelUsed, true);
+  assertEquals(result.modelStatus, 'completed');
+  assertEquals([...result.links], [['006Ho00000OPP03', 'p_5004']]);
+  assertEquals(result.rejectionReasons, {});
+  assertEquals(result.dispositions.map((row) => row.disposition), [
+    'uncertain',
+    'continuation',
+    'unrelated',
+  ]);
+  assertEquals(result.metadata.requestedModel, config.openAiModel);
+  assertEquals(result.metadata.responseModel, 'test-model-snapshot');
+  assertEquals(result.metadata.responseId, 'resp_test');
+});
+
+Deno.test('omitted candidates are incomplete, not silent negative decisions', async () => {
+  const stub = stubFetch(() =>
+    modelResponse(JSON.stringify({
       links: [{
         opportunity_id: '006Ho00000OPP03',
         project_id: 'p_5004',
@@ -349,10 +378,54 @@ Deno.test('a valid structured response completes the model path', async () => {
     }))
   );
   const result = await linkOpportunities(record, config, stub.fetch);
-  assertEquals(result.modelUsed, true);
-  assertEquals(result.modelStatus, 'completed');
+  assertEquals(result.modelStatus, 'incomplete_response');
+  assertEquals(result.rejectionReasons, { missing_opportunity: 2 });
+  assertEquals(result.dispositions.map((row) => row.disposition), [
+    'missing',
+    'continuation',
+    'missing',
+  ]);
   assertEquals([...result.links], [['006Ho00000OPP03', 'p_5004']]);
-  assertEquals(result.rejectionReasons, {});
+});
+
+Deno.test('unknown and duplicate negative decisions are rejected and a conflicting link is removed', () => {
+  const result = verifyLinks(
+    [
+      { opportunity_id: 'unknown', project_id: null, relation: 'unrelated' },
+      { opportunity_id: '006Ho00000OPP02', project_id: null, relation: 'uncertain' },
+      { opportunity_id: '006Ho00000OPP03', project_id: 'p_5004', relation: 'continuation' },
+      { opportunity_id: '006Ho00000OPP03', project_id: null, relation: 'unrelated' },
+      { opportunity_id: '006Ho00000OPP08', project_id: null, relation: 'unrelated' },
+      { opportunity_id: '006Ho00000OPP08', project_id: null, relation: 'unrelated' },
+    ],
+    buildPayload(record),
+    record,
+  );
+  assertEquals(result.links.size, 0);
+  assertEquals(result.rejectionReasons, { unknown_opportunity: 1, duplicate_opportunity: 2 });
+  assertEquals(result.dispositions.map((row) => row.disposition), [
+    'uncertain',
+    'rejected',
+    'rejected',
+  ]);
+});
+
+Deno.test('request metadata fingerprints the actual payload and survives provider failure safely', async () => {
+  let payloadText = '';
+  const fetcher = ((_input: string | URL | Request, init?: RequestInit) => {
+    const body = JSON.parse(String(init?.body));
+    payloadText = body.input[1].content[0].text;
+    return Promise.resolve(new Response('secret provider details', { status: 500 }));
+  }) as typeof fetch;
+  const result = await linkOpportunities(record, config, fetcher);
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(payloadText));
+  const expected = Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, '0')).join(
+    '',
+  );
+  assertEquals(result.metadata.payloadHash, expected);
+  assertEquals(result.metadata.promptHash.length, 64);
+  assertEquals(result.dispositions.every((row) => row.disposition === 'not_evaluated'), true);
+  assertEquals(JSON.stringify(result).includes('secret provider details'), false);
 });
 
 Deno.test('the model request asks for a grounded phase decision, not self-reported confidence', async () => {

@@ -2,10 +2,9 @@ import { selectCandidates } from './candidates.ts';
 import type { ModelRecord } from './model-record.ts';
 
 /**
- * How many active projects a plain client-name match would return for each candidate deal — the
- * cheap deterministic rule the model call replaces. 0 or 1 means arithmetic could have answered
- * and the model is redundant on this data; 2+ means nothing but the names can choose, and the
- * call is the only thing that can. Reported every run so the boundary is measured, not asserted.
+ * Counts active projects for the same client. This measures candidate ambiguity, not matching
+ * accuracy: even one candidate may be unrelated work, and several candidates may remain
+ * unresolved from names alone. It is not a labeled evaluation of the model's decisions.
  */
 export function clientMatchBaseline(record: ModelRecord): Record<string, number> {
   const active = record.projects.filter((project) => project.status === 'Active');

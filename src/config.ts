@@ -45,7 +45,7 @@ export function runtimeConfig(): RuntimeConfig {
   return {
     mockApiBaseUrl: required('MOCK_API_BASE_URL'),
     openAiApiKey: Deno.env.get('OPENAI_API_KEY')?.trim() || null,
-    openAiModel: Deno.env.get('OPENAI_MODEL')?.trim() || 'gpt-5.4-nano',
+    openAiModel: Deno.env.get('OPENAI_MODEL')?.trim() || 'gpt-5.6-luna',
     slackWebhookUrl: Deno.env.get('SLACK_WEBHOOK_URL')?.trim() || null,
   };
 }

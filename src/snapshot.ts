@@ -1,3 +1,4 @@
+import { z } from 'zod';
 import { getJson, type GetJsonOptions } from './source.ts';
 
 export type SourceDegradation = {
@@ -25,6 +26,24 @@ export type SourceSnapshot = {
   /** Optional for hand-built snapshots; fetchSnapshot always includes it. */
   degradations?: SourceDegradation[];
 };
+
+/** Quarantine the whole optional collection: partial data can imply false absence or capacity. */
+export function parseOptionalRows<T>(
+  snapshot: SourceSnapshot,
+  path: string,
+  rows: unknown[],
+  schema: z.ZodType<T>,
+): T[] {
+  const parsed = schema.array().safeParse(rows);
+  if (parsed.success) return parsed.data;
+
+  // Clear the raw collection too: reference-date derivation must not reuse rejected time entries.
+  rows.length = 0;
+  const degradations = snapshot.degradations ??= [];
+  markDegraded(path, 'invalid_payload', [], degradations);
+  degradations.sort((left, right) => left.path.localeCompare(right.path));
+  return [];
+}
 
 function arrayEnvelope(value: unknown, path: string, key: string): unknown[] {
   if (value && typeof value === 'object') {

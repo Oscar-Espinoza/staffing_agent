@@ -1,27 +1,25 @@
-# Deployment decisions and At 100x
+# Deployment decisions and at 100x
 
-A Deno HTTP server exposing `/`, `/health`, `/run` and `/last`. No database, no scheduler, no
-queue, no auth. The trigger is an HTTP GET so a reviewer can force a run; `/last` shows the most
-recent result in a browser and each run also writes one structured log line.
+A Deno HTTP server exposes `/`, `/health`, `/run`, and `/last`. Deno cron triggers real checks at
+13:00 UTC Monday–Friday. HTTP GET also lets a reviewer force a run; `/last` shows the most recent
+result in that isolate and each completed run writes a structured log line. There is no database,
+queue, authentication, persistent deduplication, or new/worsening detection.
 
-Deployment note, stated rather than hidden: the agent reads a mock API that has no public instance
-we control, so a deployed agent points at whatever host is running the fixtures. Slack delivery is
-a Workflow Builder trigger, which accepts the payload and runs the workflow afterwards — success
-means handed off, not posted, and a broken workflow step surfaces only in Slack's own log.
+The agent is hosted at https://staffing-agent.oscar-espinoza.deno.net/ and uses the mock API at
+https://gn-case-study-api.onrender.com. Slack delivery is a Workflow Builder trigger: success means
+the webhook accepted the handoff, not proof that its downstream channel-posting step ran. Dry runs
+exercise analysis without delivery, and synthetic demo runs require dry mode.
 
-**At 100x — 500 projects, 60 people, 12 clients, each defining "over-allocated" differently.** What
-breaks, in order:
+At 100x — 500 projects, 60 people, and 12 clients — prioritize:
 
-1. **The client map.** A hand-written table of 8 clients does not survive 12 clients with churn.
-   It becomes a stored mapping with an explicit unmapped queue, not a constant.
-2. **Per-client thresholds.** "Over-allocated" stops being 100% globally. Thresholds move into
-   per-client config, and the detectors read them instead of a shared constant.
-3. **Message volume.** 500 projects will not produce 9 findings, it will produce hundreds. Showing
-   every critical stops working, and ranking by imminence times magnitude becomes mandatory —
-   along with the memory and suppression this build deliberately left out, so the same unchanged
-   finding does not re-alert daily.
-4. **The linking call.** Its cost and latency scale with candidate count, and this is where it
-   starts genuinely earning its place: one client running several concurrent phases is exactly the
-   case a client-name match cannot resolve. Batch it, cache by opportunity and project id pair.
-5. **Fan-out.** One channel becomes per-lead routing, which needs the project lead field that is
-   currently null on some projects.
+1. Persist canonical identity/client mappings with an explicit unresolved queue.
+2. Persist findings to detect changes and suppress unchanged alerts across scheduled runs.
+3. Move thresholds into per-client configuration and add per-lead routing.
+4. Replace repeated full ingestion with incremental synchronization and source-health monitoring.
+5. Cache model decisions by actual inputs and prompt version, bound request batches, and retain
+   labeled evaluations for same-client mistakes. Candidate count alone does not measure correctness.
+
+Deno Deploy keeps the prototype small. A Render background worker with PostgreSQL for durable
+mappings, findings, and delivery state is an alternative production design, not part of this
+implementation. Either host would need authenticated triggers and explicit delivery idempotency
+before relying on repeated execution as a durable alerting workflow.

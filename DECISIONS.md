@@ -1,132 +1,62 @@
-# Staffing Risk Agent Decisions and Scaling
+# Staffing Risk Agent: decisions and scaling
 
-## Risk definition
-
-I kept staffing risk narrow: it has to matter within the next 30 days and be supported by source data I can trace back.
-
-**The checks I kept deterministic are:**
-
-- Someone is already booked for more work than they can realistically take on.
-- A project depends on someone who will not be available when the work happens.
-- The people most likely to take on upcoming work are already busy on other projects.
-- A likely new project is approaching with no team assigned to it.
-- A likely next phase may start before the current phase ends, so the same team could be needed for both.
-
-> Dates, percentages, working time, severity, and provenance stay deterministic.
-
-If the data itself is unclear, I do not guess. For example, Kantata values like `0.25` or `1.0` are treated as review questions because the fixture does not make it clear whether they are percentages or fractions.
-
-**Data-quality problems are kept separate from staffing risks.**
-
----
+Staffing risk means confirmed work exceeding capacity, unavailable committed people, allocations
+against lost business, likely incoming work without a project, or a possible follow-on competing
+with current delivery. The horizon is 30 days from a reference date derived from the fixtures. This
+build detects current conditions; it cannot tell whether they are new or worsening.
 
 ## Data and model boundary
 
-I normalize the three sources before running any checks:
+People join on normalized email; client names use an explicit map, with unknowns left unresolved.
+Duplicate Salesforce opportunities are removed before analysis. Orphan allocations still count
+toward personal capacity. Values greater than 0 and at most 1 have ambiguous units, so affected
+capacity claims become questions. ClickUp supplies activity context, never capacity evidence.
 
-- **People:** matched by normalized email.
-- **Clients:** explicit mapping; unknown names stay unresolved.
-- **Salesforce opportunities:** duplicates are detected and not counted twice.
-- **Missing Kantata projects:** allocations still count toward a person's total, but are not attached to a project I cannot verify.
+The model receives opportunity/project IDs, names, client names, and sales stages. It decides
+`continuation`, `unrelated`, or `uncertain`, with a project ID only for continuations. It receives
+no allocation, leave, hours, probability, or schedule fields and writes no staffing prose. Code
+checks the schema, offered IDs, record resolution, client consistency, duplicate decisions, and
+coverage of every candidate. Missing and rejected answers remain visible as `incomplete_response`.
 
-> I preferred missing a match over incorrectly joining two records.
+Matching clients supplies candidates, not proof of continuity. The model is useful when names
+distinguish delivery phases from concurrent support work; same-client errors remain possible.
+`clientMatchBaseline` measures candidate ambiguity, not correctness. Fixed expectations and repeated
+model comparisons live in [eval/EXPECTATIONS.md](eval/EXPECTATIONS.md) and
+[eval/results.json](eval/results.json), including request/response model identity and prompt/payload
+hashes. The runtime default is `gpt-5.6-luna`, selected after the fixed comparison: 19/20 runs
+passed all labeled checks versus 15/20 for `gpt-5.4-nano`, with the difference on indistinguishable
+same-client projects. This supports better abstention on that small sample, not general accuracy or
+a definitive Auralis label. Published token rates are comparable; existing environment overrides
+still take precedence. Running the evaluation itself never changes runtime configuration.
 
-### Where the model is used
+All staffing calculations, severity, and text are deterministic. Even a verified continuation is
+only a review question: a sales close is not a delivery start, and the existing project's due date
+is not the new work's deadline. Estimated total hours alone cannot establish weekly demand or
+overload. The alert asks for the schedule and team needed to assess capacity.
 
-The LLM has one narrow responsibility: deciding whether a Salesforce opportunity is a **high-confidence continuation** of an active Kantata project.
+## Failure and delivery policy
 
-I used the model here because project names are inconsistent enough that exact or fuzzy string matching alone felt unreliable.
+Transient source network failures, `5xx`, and `429` retry. Kantata users, projects, and allocations
+are required: unavailable or malformed data fails the run. Optional source failures degrade to empty
+collections; malformed optional collections are quarantined with `invalid_payload`. Duplicate emails
+within a provider remain fatal because they make identity joins unsafe. Model failure preserves
+deterministic findings and discloses incomplete follow-on review.
 
-**The model sees:**
+Slack receives plain text with source IDs, separate review questions and data-quality notes, and an
+omitted-finding count when caps apply. Full rationale remains in the structured findings. All
+critical findings remain visible. No findings means no post. Dry runs never post; synthetic demo
+runs require dry mode. A successful Workflow Builder webhook handoff does not prove its downstream
+Slack step completed.
 
-- IDs
-- project and opportunity names
-- client names
-- deal stage
+## Hosting and growth
 
-**The model does not see:**
+The service uses Deno Deploy, with the mock API hosted separately on Render. HTTP supports manual
+review; Deno cron runs weekdays at 13:00 UTC. `/last` is isolate memory only. There is no database,
+durable deduplication, alert suppression, or authentication on the prototype trigger.
 
-- allocations
-- leave
-- percentages
-- dates
-- hours
-
-Its output is validated again in code. Invalid, unresolved, or cross-client links are discarded. If the model fails, the deterministic checks still run.
-
-> The model never produces a number or factual staffing claim.
-
----
-
-## Delivery, validation, and failures
-
-### Slack output
-
-Slack separates:
-
-- **Staffing risks**
-- **Review questions**
-- **Data-quality notes**
-
-No findings means no message, and repeated manifestations of the same problem are grouped together.
-
-Every factual value shown to the user comes from source data or deterministic calculations and keeps its source IDs for traceability.
-
-### Validation
-
-The model output is schema-constrained and validated again in code.
-
-I also used:
-
-- dry runs;
-- focused tests;
-- the ambiguity demo;
-- `clientMatchBaseline` to compare model linking against simple client-name matching.
-
-**With more time**, I would add a small fixed evaluation set for:
-
-- clear continuations;
-- unrelated deals;
-- same-client wrong matches;
-- cross-client matches.
-
-### Failures
-
-Network failures, `5xx`, and `429` responses retry.
-
-**Required:** Kantata users, projects, and allocations.  
-If these fail, the run fails.
-
-**Optional:** time off, time entries, Salesforce, and ClickUp.  
-If these fail, the run continues and discloses the missing source.
-
-For this prototype, `/last` is only stored in memory. I did not add persistent deduplication or idempotency.
-
-### Deployment
-
-I used **Deno Deploy** because it kept deployment simple.
-
-`GET /run` is intentionally a reviewer-friendly prototype trigger. In production I would use authenticated scheduled or event-driven execution.
-
----
-
-## At 100x
-
-If this had to support 500 active projects, 60 people, and 12 clients, I would change things in this order:
-
-1. **Persist canonical cross-system mappings**  
-   Stop relying on runtime client mapping.
-
-2. **Move staffing thresholds into per-client configuration**  
-   Different clients may define over-allocation differently.
-
-3. **Replace full scans with incremental or event-driven ingestion**
-
-4. **Persist findings**  
-   Add deduplication, change detection, and alert suppression.
-
-5. **Keep the model narrow**  
-   Continue using it only for continuation matching, with stronger evals and caching.
-
-6. **Add source-health monitoring**  
-   Track failures, unresolved mappings, and data-quality issues explicitly.
+At 100x, first persist identity/client mappings and findings, then add change detection and
+deduplication, client-specific thresholds, incremental ingestion, and per-lead routing. Cache model
+decisions against the actual inputs and prompt version, and keep evaluating same-client mistakes. A
+Render background worker with PostgreSQL for durable state is an alternative production design; it
+is not implemented here. The current stack avoids operating that infrastructure for a stateless
+case-study run.

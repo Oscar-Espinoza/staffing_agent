@@ -1,9 +1,11 @@
 import type { Finding } from './finding.ts';
 
-export type RenderFinding = Pick<
-  Finding,
-  'title' | 'detail' | 'ambiguous'
->;
+export type RenderFinding =
+  & Pick<
+    Finding,
+    'title' | 'detail' | 'ambiguous'
+  >
+  & Partial<Pick<Finding, 'sources'>>;
 
 export type RenderInput = {
   /** Already ordered and capped upstream — this is exactly the "shown" set, nothing more. */
@@ -11,6 +13,9 @@ export type RenderInput = {
   referenceDate: string;
   /** Source paths S02 pushed onto `degraded`, e.g. `/kantata/time_entries`. */
   degradedSources: string[];
+  omittedFindings?: number;
+  modelWarning?: string;
+  dataQualityNotes?: string[];
 };
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -21,6 +26,20 @@ function humanDate(isoDate: string): string {
   const name = MONTHS[Number(month) - 1];
   if (year === undefined || day === undefined || name === undefined) return isoDate;
   return `${Number(day)} ${name} ${year}`;
+}
+
+/** Keep the exact record ids while collapsing repeated system/collection prefixes. */
+function sourceLine(sources: string[]): string {
+  const groups = new Map<string, string[]>();
+  for (const source of new Set(sources)) {
+    const [prefix, id] = source.split('/');
+    const label = (prefix ?? source).replace('kantata:', 'Kantata ')
+      .replace('salesforce:', 'Salesforce ').replace('clickup:', 'ClickUp ');
+    const ids = groups.get(label) ?? [];
+    if (id !== undefined) ids.push(id);
+    groups.set(label, ids);
+  }
+  return [...groups].map(([label, ids]) => `${label} ${ids.join(', ')}`.trim()).join('; ');
 }
 
 /**
@@ -34,7 +53,10 @@ export function render(input: RenderInput): string {
   const questions = input.findings.filter((finding) => finding.ambiguous);
 
   const blocks = (findings: RenderFinding[]) =>
-    findings.map((finding) => `• ${finding.title}\n  ${finding.detail.replaceAll('\n', '\n  ')}`)
+    findings.map((finding) =>
+      `• ${finding.title}\n  ${finding.detail.replaceAll('\n', '\n  ')}` +
+      (finding.sources?.length ? `\n  Sources: ${sourceLine(finding.sources)}` : '')
+    )
       .join('\n\n');
   const sections = [
     [
@@ -50,6 +72,17 @@ export function render(input: RenderInput): string {
 
   if (questions.length > 0) {
     sections.push(`────────────────────\nNeeds review\n\n${blocks(questions)}`);
+  }
+
+  const omitted = input.omittedFindings ?? 0;
+  if (omitted > 0) {
+    sections.push(
+      `${omitted} additional finding${omitted === 1 ? '' : 's'} omitted; see the run result.`,
+    );
+  }
+  if (input.modelWarning) sections.push(`⚠️ ${input.modelWarning}`);
+  if (input.dataQualityNotes?.length) {
+    sections.push(`DATA QUALITY NOTES\n${input.dataQualityNotes.join('\n')}`);
   }
 
   if (input.degradedSources.length > 0) {

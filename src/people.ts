@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import type { SourceSnapshot } from './snapshot.ts';
+import { parseOptionalRows, type SourceSnapshot } from './snapshot.ts';
 
 export type Person = {
   email: string;
@@ -25,13 +25,13 @@ const KantataUser = z.object({
 const SalesforceUser = z.object({
   Id: z.string(),
   Name: z.string(),
-  Email: z.string(),
+  Email: z.string().trim().toLowerCase().email(),
   Title: z.string().nullish(),
 });
 const ClickUpMember = z.object({
   id: z.number(),
   username: z.string(),
-  email: z.string(),
+  email: z.string().trim().toLowerCase().email(),
 });
 const Email = z.string().email();
 
@@ -64,8 +64,18 @@ function emptyPerson(email: string): Person {
 
 export function joinPeople(snapshot: SourceSnapshot): Person[] {
   const kantata = snapshot.kantata.users.map((user) => KantataUser.parse(user));
-  const salesforce = snapshot.salesforce.users.map((user) => SalesforceUser.parse(user));
-  const clickup = snapshot.clickup.members.map((member) => ClickUpMember.parse(member));
+  const salesforce = parseOptionalRows(
+    snapshot,
+    '/salesforce/users',
+    snapshot.salesforce.users,
+    SalesforceUser,
+  );
+  const clickup = parseOptionalRows(
+    snapshot,
+    '/clickup/members',
+    snapshot.clickup.members,
+    ClickUpMember,
+  );
   uniqueEmails(kantata, (user) => user.email_address, 'Kantata');
   uniqueEmails(salesforce, (user) => user.Email, 'Salesforce');
   uniqueEmails(clickup, (member) => member.email, 'ClickUp');

@@ -122,16 +122,34 @@ export async function runStaffingCheck({ config, dryRun, demo }: RunOptions): Pr
     rejectionReasons: linkRejections,
     modelUsed,
     modelStatus,
+    dispositions: modelDispositions,
+    metadata: modelMetadata,
   } = model;
   const linked = detectFollowOn(record, links);
 
   const findings = [...deterministic, ...linked];
   const shown = selectShown(findings);
   const degradations = snapshot.degradations?.map((entry) => entry.path) ?? degraded;
+  const omittedFindings = Math.max(findings.length - shown.length, 0);
+  const modelWarning = modelStatus === 'completed' || modelStatus === 'no_candidates'
+    ? undefined
+    : modelStatus === 'incomplete_response'
+    ? 'Some opportunity matches could not be verified; follow-on review is incomplete.'
+    : 'Opportunity matching was unavailable; follow-on review is incomplete.';
+  const dataQualityNotes = [
+    ...record.notes,
+    ...record.unmappedClients.map((client) =>
+      `Unmapped client: ${client}; cross-system links unresolved.`
+    ),
+    ...(record.referenceDate.note === null ? [] : [record.referenceDate.note]),
+  ];
   const slackMessage = shown.length === 0 ? null : render({
     findings: shown,
     referenceDate: record.referenceDate.date,
     degradedSources: degradations,
+    omittedFindings,
+    dataQualityNotes,
+    ...(modelWarning === undefined ? {} : { modelWarning }),
   });
   const message = slackMessage === null
     ? null
@@ -160,7 +178,9 @@ export async function runStaffingCheck({ config, dryRun, demo }: RunOptions): Pr
     modelStatus,
     linksRejected,
     linkRejections,
-    dataQualityNotes: record.notes,
+    modelDispositions,
+    modelMetadata,
+    dataQualityNotes,
     // What the model chose, and whether a plain client-name match could have chosen it.
     modelLinks: Object.fromEntries(links),
     clientMatchBaseline: clientMatchBaseline(record),
@@ -168,7 +188,7 @@ export async function runStaffingCheck({ config, dryRun, demo }: RunOptions): Pr
     quietBecause,
     findings,
     slackFindings: shown,
-    omittedFindings: Math.max(findings.length - shown.length, 0),
+    omittedFindings,
     message,
   };
   const { findings: _findings, slackFindings: _slackFindings, message: _message, ...metadata } =

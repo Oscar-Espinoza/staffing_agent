@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import type { SourceSnapshot } from './snapshot.ts';
+import { parseOptionalRows, type SourceSnapshot } from './snapshot.ts';
 import { joinPeople, type Person } from './people.ts';
 import { mapClient } from './clients.ts';
 import {
@@ -35,7 +35,11 @@ const KantataTimeOffRow = z.object({
   type: z.string(),
   status: z.string(),
 });
-const KantataTimeEntryRow = z.object({ project_id: z.string(), hours: z.number() });
+const KantataTimeEntryRow = z.object({
+  project_id: z.string(),
+  hours: z.number(),
+  date_performed: z.iso.date(),
+});
 
 const SalesforceAccountRow = z.object({ Id: z.string(), Name: z.string(), Industry: z.string() });
 const SalesforceOpportunityRow = z.object({
@@ -198,24 +202,46 @@ export function assembleModelRecord(snapshot: SourceSnapshot): ModelRecord {
   const kantataAllocations = snapshot.kantata.allocations.map((row) =>
     KantataAllocationRow.parse(row)
   );
-  const kantataTimeOff = snapshot.kantata.time_off.map((row) => KantataTimeOffRow.parse(row));
-  const timeEntries = snapshot.kantata.time_entries.map((row) => KantataTimeEntryRow.parse(row));
+  const kantataTimeOff = parseOptionalRows(
+    snapshot,
+    '/kantata/time_off',
+    snapshot.kantata.time_off,
+    KantataTimeOffRow,
+  );
+  const timeEntries = parseOptionalRows(
+    snapshot,
+    '/kantata/time_entries',
+    snapshot.kantata.time_entries,
+    KantataTimeEntryRow,
+  );
 
-  const salesforceAccounts = snapshot.salesforce.accounts.map((row) =>
-    SalesforceAccountRow.parse(row)
+  const salesforceAccounts = parseOptionalRows(
+    snapshot,
+    '/salesforce/accounts',
+    snapshot.salesforce.accounts,
+    SalesforceAccountRow,
   );
   const accountNameById = new Map(salesforceAccounts.map((account) => [account.Id, account.Name]));
   const accountIdByName = new Map(salesforceAccounts.map((account) => [account.Name, account.Id]));
 
   const dedupedOpportunities = dedupeOpportunities(
-    snapshot.salesforce.opportunities.map((row) => SalesforceOpportunityRow.parse(row)),
+    parseOptionalRows(
+      snapshot,
+      '/salesforce/opportunities',
+      snapshot.salesforce.opportunities,
+      SalesforceOpportunityRow,
+    ),
     accountNameById,
     notes,
   );
   const opportunities = dedupedOpportunities.map(toModelOpportunity);
 
-  const tasks: ModelTask[] = snapshot.clickup.tasks
-    .map((row) => ClickUpTaskRow.parse(row))
+  const tasks: ModelTask[] = parseOptionalRows(
+    snapshot,
+    '/clickup/tasks',
+    snapshot.clickup.tasks,
+    ClickUpTaskRow,
+  )
     .map((task) => ({
       id: task.id,
       name: task.name,

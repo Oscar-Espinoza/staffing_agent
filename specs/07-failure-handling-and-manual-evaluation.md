@@ -1,23 +1,30 @@
-# Failure handling and manual evaluation
+# Failure handling and evaluation
 
-Retries cover transient network, 5xx and 429 responses. Kantata users, projects and allocations are
-required and their failure is an HTTP 500; everything else degrades to an empty collection plus a
-disclosed `{path, reason}`. Linking failure never blocks deterministic findings.
+Retries cover transient network failures, `5xx`, and `429`. Kantata users, projects, and allocations
+are required: unavailable or malformed data fails the run with HTTP 500. Optional collection
+failures degrade to an empty collection and a disclosed `{path, reason}`. A malformed optional
+collection is quarantined in full as `invalid_payload`; valid rows are not silently salvaged.
+Duplicate emails within a provider remain fatal because ambiguous identity joins are unsafe.
 
-**How we know the model-driven part works.** Every run reports `clientMatchBaseline`: how many
-active projects a plain client-name match would have returned for each candidate deal. 1 means
-arithmetic could have answered and the model was redundant on that data; 2 or more means nothing
-but the names can choose. On the shipped fixtures it is 1 everywhere — the model is honestly
-redundant today, and the metric says so rather than hiding it.
+Linking failure never blocks independent deterministic findings. Each run exposes model status,
+candidate dispositions, rejection reasons, and request/response metadata. An incomplete or failed
+review adds a warning to any rendered message; a quiet run still exposes status in JSON.
 
-`GET /run?dry=1&demo=1` injects one synthetic second Halden project so the baseline becomes 2 and
-the ambiguity is real. Measured over eight runs: **8/8 correct** (`p_5004`, Phase 2 Delivery), 0
-wrong, 0 declined. Note the limit honestly — both candidates are Halden projects, so the verifier's
-cross-client check clears either one. It catches a link to the wrong client; it cannot catch a link
-to the wrong project within the right client. There the model's judgment is unguarded, and 8/8 on
-one ambiguity with a strong lexical signal is evidence, not proof.
+`clientMatchBaseline` counts active projects a client-name match supplies for each candidate deal.
+One candidate does not prove a continuation, and two candidates do not prove a model selected the
+right one. This is a measure of candidate ambiguity, not an accuracy score.
 
-Deterministic output is verified by repeated dry runs being byte-identical, and by unit tests over
-the payload (asserting no number or name leaks into it), the verifier's five rules, and the
-detector edge cases that actually bit: a NaN percentage, an inactive person counted as roster, and
-pending leave treated as committed.
+`GET /run?dry=1&demo=1` adds a synthetic competing Halden project to exercise same-client ambiguity.
+It never posts. A verifier can reject cross-client links while accepting a semantically wrong
+project for the right client, so demo success alone is limited evidence.
+
+Fixed labels and scenario limits are recorded in [../eval/EXPECTATIONS.md](../eval/EXPECTATIONS.md).
+Repeated model comparison evidence is in [../eval/results.json](../eval/results.json), with the
+exact reproduction command in [../README.md](../README.md#linker-evaluation). Compare candidate
+dispositions as well as selected links; missing answers are not correct abstentions. Results
+describe those inputs, prompts, and returned model identities, not general model accuracy.
+
+Run `deno task check` and `deno test` for formatting, lint, types, and focused regression checks.
+Tests cover payload boundaries, link verification and coverage, source degradation, follow-on
+questions, detector edge cases, rendering, and routes. Dry runs against the same fixtures verify
+integration; model variation and response metadata mean full run JSON need not be byte-identical.

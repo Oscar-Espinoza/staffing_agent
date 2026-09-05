@@ -1,21 +1,22 @@
 # Goal and scope
 
-This service turns three unconnected systems into one short decision alert for a delivery lead. It
-fetches, normalizes, joins, runs six deterministic detectors, asks a model exactly one question,
-verifies the answer, and posts at most one Slack message.
+This service turns three unconnected systems into one short alert for a delivery lead. It fetches,
+normalizes, joins, runs five independent deterministic detectors, asks a model to classify
+opportunity/project continuity, verifies its answers, and runs a sixth detector on accepted links.
+It posts at most one plain-text Slack message per run.
 
-**Staffing risk has five clauses.** A condition qualifies only if it is new or worsening within the
-next 30 days and backed by readable source data:
+Staffing risk has five clauses, assessed against a 30-day horizon and readable source data:
 
 1. Confirmed work exceeds capacity.
 2. Capacity we are counting on is not actually available.
-3. Committed capacity points at unconfirmed work.
-4. Likely incoming work cannot be staffed.
-5. A follow-on deal lands on a team still committed to the phase it follows.
+3. Committed capacity points at lost business.
+4. Likely incoming work has no project in the delivery system.
+5. A possible follow-on needs its schedule and team checked against current delivery commitments.
 
-Every clause maps to at least one detector and every detector maps back to a clause; either
-without the other is a defect in the definition. Where a number's unit is genuinely unreadable the
-finding becomes a question, never an assertion.
+The last clause is always a review question: sales dates alone do not prove delivery overlap.
+Ambiguous allocation units also become questions. Data-quality notes are separate from staffing
+findings. This implementation observes current conditions; identifying new or worsening findings
+requires history that is not stored.
 
-Out of scope by decision, not oversight: memory between runs, suppression of repeats, alert
-routing, scheduling, authentication, a UI, and any persistence at all.
+Deno cron runs weekdays at 13:00 UTC. Persistent history, suppression of repeats, per-lead routing,
+authentication, and durable state remain out of scope. `/last` holds only the last isolate result.

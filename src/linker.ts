@@ -10,6 +10,7 @@ export type LinkerPayload = {
 
 export type ModelStatus =
   | 'completed'
+  | 'incomplete_response'
   | 'no_candidates'
   | 'not_configured'
   | 'request_failed'
@@ -21,6 +22,23 @@ export type LinkResult = {
   rejectionReasons: Partial<Record<LinkRejectionReason, number>>;
   modelUsed: boolean;
   modelStatus: ModelStatus;
+  dispositions: LinkDisposition[];
+  metadata: {
+    requestedModel: string;
+    responseModel: string | null;
+    responseId: string | null;
+    promptVersion: string;
+    promptHash: string;
+    payloadHash: string;
+    reasoningEffort: 'low';
+  };
+};
+
+export type LinkDisposition = {
+  opportunityId: string;
+  projectId: string | null;
+  disposition: LinkRecord['relation'] | 'missing' | 'rejected' | 'not_evaluated';
+  reason?: LinkRejectionReason;
 };
 
 export type LinkRejectionReason =
@@ -30,12 +48,13 @@ export type LinkRejectionReason =
   | 'unknown_project'
   | 'unresolved_record'
   | 'cross_client'
+  | 'missing_opportunity'
   | 'duplicate_opportunity';
 
 type LinkRecord = {
   opportunity_id: string;
   project_id: string | null;
-  relation: 'continuation' | 'unrelated';
+  relation: 'continuation' | 'unrelated' | 'uncertain';
 };
 
 const linkSchema = {
@@ -64,7 +83,7 @@ const linkSchema = {
             properties: {
               opportunity_id: { type: 'string' },
               project_id: { type: 'null' },
-              relation: { type: 'string', enum: ['unrelated'] },
+              relation: { type: 'string', enum: ['unrelated', 'uncertain'] },
             },
           },
         ],
@@ -84,8 +103,18 @@ const INSTRUCTION =
   'earlier delivery phase, select that delivery phase. ' +
   'Do not select it for an unnumbered support, retainer, or recurring-service project. ' +
   'For a continuation, provide one listed active project with relation "continuation". ' +
-  'If no listed project is a continuation, return project_id null with relation "unrelated". ' +
-  'Return at most one record per opportunity.';
+  'If no project exists for the client, or the names clearly describe different work, return ' +
+  'project_id null with relation "unrelated". If names only suggest a connection, or several ' +
+  'projects are equally plausible, return project_id null with relation "uncertain". ' +
+  'A shared broad topic alone does not establish continuity. ' +
+  'Return exactly one record for every opportunity, including unrelated and uncertain decisions.';
+
+const PROMPT_VERSION = 'continuation-v2';
+
+async function sha256(text: string): Promise<string> {
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
+  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('');
+}
 
 /**
  * S13: hand-built projections, never a spread. Every field the model is not shown is a fact it
@@ -127,7 +156,9 @@ function outputText(response: unknown): string {
 /** S14 rule 1: the shape is the contract. One bad record fails the call; nothing is salvaged. */
 function parseLinks(text: string): LinkRecord[] {
   const parsed = JSON.parse(text) as { links?: unknown };
-  if (!Array.isArray(parsed.links)) throw new Error('no links array');
+  if (!parsed || Object.keys(parsed).length !== 1 || !Array.isArray(parsed.links)) {
+    throw new Error('no links array');
+  }
   return parsed.links.map((raw) => {
     if (!raw || typeof raw !== 'object') throw new Error('malformed link');
     const item = raw as Record<string, unknown>;
@@ -136,18 +167,16 @@ function parseLinks(text: string): LinkRecord[] {
     if (
       typeof opportunity_id !== 'string' ||
       (project_id !== null && typeof project_id !== 'string') ||
-      (relation !== 'continuation' && relation !== 'unrelated') ||
-      (project_id === null) !== (relation === 'unrelated')
+      (relation !== 'continuation' && relation !== 'unrelated' && relation !== 'uncertain') ||
+      (project_id !== null) !== (relation === 'continuation')
     ) throw new Error('malformed link');
     return { opportunity_id, project_id, relation };
   });
 }
 
 /**
- * S15. Deterministic rejection rules over the model's raw answer. A null project id with relation
- * "unrelated" is the correct answer for a client with no active project — not a link, and not a
- * rejection: counting it would inflate the one number that says whether this guard catches
- * anything.
+ * S15. Validate negative decisions too. Missing answers and conflicting duplicates must remain
+ * visible; neither is evidence that the opportunity is unrelated.
  */
 export function verifyLinks(
   proposed: LinkRecord[],
@@ -157,6 +186,7 @@ export function verifyLinks(
   links: Map<string, string>;
   rejected: number;
   rejectionReasons: Partial<Record<LinkRejectionReason, number>>;
+  dispositions: LinkDisposition[];
 } {
   const offeredOpportunities = new Set(payload.opportunities.map((row) => row.id));
   const offeredProjects = new Set(payload.projects.map((row) => row.id));
@@ -165,6 +195,7 @@ export function verifyLinks(
   const accountIdByName = new Map(record.accounts.map((account) => [account.name, account.id]));
 
   const links = new Map<string, string>();
+  const decisions = new Map<string, LinkDisposition>();
   let rejected = 0;
   const rejectionReasons: Partial<Record<LinkRejectionReason, number>> = {};
   const reject = (reason: LinkRejectionReason) => {
@@ -172,7 +203,6 @@ export function verifyLinks(
     rejectionReasons[reason] = (rejectionReasons[reason] ?? 0) + 1;
   };
   for (const link of proposed) {
-    if (link.project_id === null && link.relation === 'unrelated') continue;
     const opportunity = opportunityById.get(link.opportunity_id);
     const project = link.project_id === null ? undefined : projectById.get(link.project_id);
     const client = project === undefined
@@ -182,49 +212,105 @@ export function verifyLinks(
       reject('unknown_opportunity');
       continue;
     }
+    const rejectCandidate = (reason: LinkRejectionReason) => {
+      reject(reason);
+      links.delete(link.opportunity_id);
+      decisions.set(link.opportunity_id, {
+        opportunityId: link.opportunity_id,
+        projectId: null,
+        disposition: 'rejected',
+        reason,
+      });
+    };
+    if (decisions.has(link.opportunity_id)) {
+      rejectCandidate('duplicate_opportunity');
+      continue;
+    }
+    if (opportunity === undefined) {
+      rejectCandidate('unresolved_record');
+      continue;
+    }
+    if (
+      link.project_id === null && (link.relation === 'unrelated' || link.relation === 'uncertain')
+    ) {
+      decisions.set(link.opportunity_id, {
+        opportunityId: link.opportunity_id,
+        projectId: null,
+        disposition: link.relation,
+      });
+      continue;
+    }
     if (link.project_id === null) {
-      reject('missing_project');
+      rejectCandidate('missing_project');
       continue;
     }
     if (link.relation !== 'continuation') {
-      reject('relation_mismatch');
+      rejectCandidate('relation_mismatch');
       continue;
     }
     if (!offeredProjects.has(link.project_id)) {
-      reject('unknown_project');
+      rejectCandidate('unknown_project');
       continue;
     }
-    if (opportunity === undefined || project === undefined) {
-      reject('unresolved_record');
+    if (project === undefined) {
+      rejectCandidate('unresolved_record');
       continue;
     }
     if (client === null || accountIdByName.get(client) !== opportunity.accountId) {
-      reject('cross_client');
-      continue;
-    }
-    if (links.has(link.opportunity_id)) {
-      reject('duplicate_opportunity');
+      rejectCandidate('cross_client');
       continue;
     }
     links.set(link.opportunity_id, link.project_id);
+    decisions.set(link.opportunity_id, {
+      opportunityId: link.opportunity_id,
+      projectId: link.project_id,
+      disposition: 'continuation',
+    });
   }
-  return { links, rejected, rejectionReasons };
+  const dispositions = payload.opportunities.map(({ id }): LinkDisposition => {
+    const decision = decisions.get(id);
+    if (decision) return decision;
+    reject('missing_opportunity');
+    return {
+      opportunityId: id,
+      projectId: null,
+      disposition: 'missing',
+      reason: 'missing_opportunity',
+    };
+  });
+  return { links, rejected, rejectionReasons, dispositions };
 }
 
-/** S14: one call for every candidate at once. Any failure at all degrades to nothing. */
+/** S14: one call for every candidate. Request/schema failures yield no links; omissions are explicit. */
 export async function linkOpportunities(
   record: ModelRecord,
   config: RuntimeConfig,
   fetchImpl: typeof fetch = fetch,
 ): Promise<LinkResult> {
+  const payload = buildPayload(record);
+  const payloadText = JSON.stringify(payload);
+  const metadata: LinkResult['metadata'] = {
+    requestedModel: config.openAiModel,
+    responseModel: null,
+    responseId: null,
+    promptVersion: PROMPT_VERSION,
+    promptHash: await sha256(INSTRUCTION + JSON.stringify(linkSchema)),
+    payloadHash: await sha256(payloadText),
+    reasoningEffort: 'low',
+  };
   const empty = (modelStatus: Exclude<ModelStatus, 'completed'>): LinkResult => ({
     links: new Map<string, string>(),
     rejected: 0,
     rejectionReasons: {},
     modelUsed: false,
     modelStatus,
+    dispositions: payload.opportunities.map(({ id }) => ({
+      opportunityId: id,
+      projectId: null,
+      disposition: 'not_evaluated',
+    })),
+    metadata,
   });
-  const payload = buildPayload(record);
   if (payload.opportunities.length === 0) return empty('no_candidates');
   const apiKey = config.openAiApiKey?.trim();
   if (!apiKey) return empty('not_configured');
@@ -242,7 +328,7 @@ export async function linkOpportunities(
         reasoning: { effort: 'low' },
         input: [
           { role: 'system', content: [{ type: 'input_text', text: INSTRUCTION }] },
-          { role: 'user', content: [{ type: 'input_text', text: JSON.stringify(payload) }] },
+          { role: 'user', content: [{ type: 'input_text', text: payloadText }] },
         ],
         text: {
           format: {
@@ -260,8 +346,17 @@ export async function linkOpportunities(
   if (!response.ok) return empty('request_failed');
 
   try {
-    const proposed = parseLinks(outputText(await response.json()));
-    return { ...verifyLinks(proposed, payload, record), modelUsed: true, modelStatus: 'completed' };
+    const body = await response.json();
+    metadata.responseModel = typeof body?.model === 'string' ? body.model : null;
+    metadata.responseId = typeof body?.id === 'string' ? body.id : null;
+    const proposed = parseLinks(outputText(body));
+    const verified = verifyLinks(proposed, payload, record);
+    return {
+      ...verified,
+      modelUsed: true,
+      modelStatus: verified.rejected ? 'incomplete_response' : 'completed',
+      metadata,
+    };
   } catch {
     return empty('invalid_response');
   }

@@ -1,128 +1,88 @@
 # AGENTS.md
 
-This file provides guidance to Codex (Codex.ai/code) when working with code in this repository.
+Guidance for agents working in this repository.
 
-## What this is
+## Scope and checks
 
-A submission for the Go Nimbly "Staffing Risk Agent" case study (brief: `/home/oscar/Documents/Go_Nimbly_case.txt`).
-An agent reads a mock API exposing Kantata + Salesforce + ClickUp, detects staffing risk, and emits one
-Slack-shaped message. Deno + TypeScript, no database, no scheduler, no framework.
+Go Nimbly Staffing Risk Agent case study (brief: `/home/oscar/Documents/Go_Nimbly_case.txt`). Deno +
+TypeScript, `fetch`, and Zod; no database or framework. The eight files in `specs/` describe the
+implemented contract. Read them before changing behavior. Comments may reference finer-grained
+S00–S21 sections; they are not evidence that a feature exists.
 
-Graded on reasoning, not coverage: problem framing, cross-system data modeling, where the model does and
-does not belong, failure handling, scaling. `specs/01`–`specs/08` are the written scope — read them before
-changing behavior; they are the contract, the code is the implementation.
-
-## Commands
-
-```
-deno task dev        # watch + --env-file, local run
-deno task start      # production entrypoint (Deno Deploy uses src/index.ts)
-deno task check      # fmt --check && lint && typecheck — run this before finishing
-deno task typecheck  # deno check src/
+```sh
+deno task dev        # watch + --env-file
+deno task start      # production entrypoint: src/index.ts
+deno task check      # formatting, lint, typecheck; run before finishing
+deno test            # deterministic, linker, source, renderer, and route checks
 ```
 
-`deno test src/` covers the render-layer string logic only (`src/render_test.ts`); everything else
-is verified manually by repeated `/run?dry=1` comparisons, per
-`specs/07-failure-handling-and-manual-evaluation.md`. Single case: `deno test src/render_test.ts --filter "name"`.
+Use `GET /run?dry=1` for verification. `/run` may deliver to Slack; `/health` touches no dependency;
+`/last` shows the current isolate's last result. `/run?dry=1&demo=1` adds synthetic competing Halden
+context. Demo requests without dry mode are rejected. Deno cron runs real checks Monday–Friday at
+13:00 UTC using the same trigger. There is no persisted deduplication, suppression, or new/worsening
+detection; `/last` is not durable history.
 
-Endpoints: `GET /` (self-description), `GET /health` (liveness, touches nothing), `GET /run` (posts to
-Slack), `GET /run?dry=1` (same analysis, no side effects — use this while developing).
-
-Config is environment-only (`.env.example`): `MOCK_API_BASE_URL`, `OPENAI_API_KEY`, `SLACK_WEBHOOK_URL`
-required by `/run`; `OPENAI_MODEL`, `PORT` optional. `runtimeConfig()` is deliberately called per-request
-so `/health` works before secrets exist.
+Only `MOCK_API_BASE_URL` is required. `OPENAI_API_KEY` and `SLACK_WEBHOOK_URL` are optional;
+`OPENAI_MODEL` defaults to `gpt-5.6-luna`, `PORT` to 8080. Read config per request so liveness works
+before secrets exist. Missing model configuration preserves deterministic findings with
+`modelStatus: "not_configured"`; missing Slack configuration returns `delivered: false`.
 
 ## Pipeline
 
-`router.ts` → `run.ts` orchestrates one linear pass:
-
-1. **`snapshot.ts`** — fetches all ten collections in parallel via `source.ts` (retries 5xx/429/network with
-   backoff + `Retry-After`). Kantata users/projects/allocations are **required** (failure = HTTP 500);
-   everything else is **optional** and degrades to `[]` plus a `{path, reason}` entry. ClickUp tasks paginate.
-2. **`model-record.ts`** — the single join. Every later stage reads `ModelRecord`, never a raw response.
-   Delegates to `people.ts` (identity), `clients.ts` (client→Salesforce/ClickUp names),
-   `allocations.ts` (percentage scale), `reference-date.ts` ("today").
-3. **`detectors/`** — the deterministic risk clauses, both emitting `Finding[]`:
-   `over-allocated.ts` (⚠️ risks) and `scale-ambiguous.ts` (❓ questions, the abstention the first
-   detector makes said out loud). Both filter through the shared window in `window.ts`.
-4. **`run.ts:review()`** — one OpenAI Responses call, strict JSON schema, ≤5 risks.
-5. **`render.ts`** — Slack text from `Finding`s only.
-
-### Cross-system joins (the interesting part)
-
-- **People**: no shared key — joined on normalized email. `Person` carries all three ids; `@gonimbly.com`
-  determines `isExternal`. Duplicate emails within one provider throw.
-- **Clients**: a hardcoded map in `clients.ts` because the three systems spell client names differently
-  (`Quillspace` → `Quillspace Software`). Unmapped names accumulate in `unmappedClients`, never guessed.
-- **Reference date** is derived from the data (latest time entry, falling back to latest project start),
-  never `Date.now()` — a run months from now must reproduce today's findings against the same fixtures.
-
-### Deliberate messiness handling
-
-- `allocation_percentage` mixes 0–100 and 0–1 scales. `≤ 1` is read as a fraction **and flagged ambiguous**;
-  a person holding any ambiguous allocation in the window is excluded from confident over-allocation claims.
-- Duplicate Salesforce opportunities are deduped on `(AccountId, Amount, CloseDate, hours)`, first kept,
-  the drop recorded in `notes`.
-- Allocations pointing at nonexistent projects still count toward a person's total but attach to no project;
-  recorded as a note, not a finding.
+1. `snapshot.ts` fetches ten collections through `source.ts`, with transient retries and ClickUp
+   pagination. Kantata users/projects/allocations are required. Optional failures degrade to `[]`
+   plus `{path, reason}`; malformed optional rows quarantine the whole collection as
+   `invalid_payload`. Malformed required rows and duplicate provider emails remain fatal.
+2. `model-record.ts` joins once into `ModelRecord`. People join on normalized email; clients use an
+   explicit name map. Reference date comes from latest time entry, then latest project start, rather
+   than the wall clock. Duplicate opportunities are deduped on account/amount/close/hours. Orphan
+   allocations still count toward personal capacity and produce a data-quality note.
+3. Five independent deterministic detectors cover over-allocation, unavailable capacity, lost deals,
+   unstaffed demand, and ambiguous allocation scale. Shared date-window helpers filter the relevant
+   records before arithmetic.
+4. `linker.ts` makes one bounded Responses call to match candidate opportunities to active projects.
+   `detectors/follow-on.ts` turns verified continuations into review questions.
+5. `run.ts` selects every critical finding plus bounded, group-balanced watch/question tails.
+   `render.ts` assembles plain-text findings, source IDs, omitted count, data-quality notes, and
+   incomplete-review warnings. Full rationale remains in the structured findings. `run.ts` delivers
+   at most one message and logs metadata.
 
 ## Invariants
 
-These are enforced by convention and referenced throughout the comments as "Rule N":
+- Every finding carries source IDs in `system:collection/id` format. Numbers and staffing prose come
+  from normalized data or code, never the model.
+- Kantata is the capacity source of truth. ClickUp is activity context only.
+- Allocation values greater than 0 and at most 1 are interpreted as fractions and flagged ambiguous.
+  Zero is unambiguous. Ambiguous units cannot support confident capacity claims.
+- Follow-ons always have `ambiguous: true`. A sales close is not a delivery start; the current
+  project's due date is not the new work's deadline. Do not derive weekly demand from that interval.
+- Slack is plain text because Workflow Builder posts the variable verbatim. Never introduce Markdown
+  or Slack link markup. Silence is valid: no findings means no post.
 
-1. **Every claim is traceable.** A `Finding` without `sources` is an opinion. Sources are
-   `system:collection/id` strings, rendered as one compact `Sources: Kantata allocations a_9001,
-   a_9002; user u_10024` line under the finding. Records support a finding; they never dominate it.
-2. **Numbers are read, never generated.** Anything quoted in `statement` lives in `metrics` or the model record.
-3. **ClickUp is activity context only** — never capacity or allocation evidence. Kantata is the capacity
-   source of truth.
-4. **Ambiguity becomes a question, not an assertion** (`Finding.ambiguous` renders as `[QUESTION]`).
-5. **Filter to the horizon window before summing**, not after (`HORIZON_DAYS = 30`).
-6. **Code renders, the model fills slots.** The review pass returns `{severity, title, detail,
-   rationale, sources}`; `render.ts` assembles every line from a template. Three guards in
-   `run.ts` enforce provenance rather than trusting the prompt: cited source ids must exist,
-   a risk citing an ambiguous allocation is forced to `ambiguous: true`, and **every numeric token
-   in model prose must appear in the snapshot or the deterministic findings** — an unmatched
-   number discards the whole risk, counted as `discardedRisks` in the `/run` response.
-7. **The Slack message is plain text.** The webhook is a Workflow Builder trigger, which posts the
-   variable verbatim, so `*bold*`, backticks and `<url|label>` arrive as literal punctuation.
-   Structure comes from uppercase section labels and blank lines. Never reintroduce markup.
+## Model boundary and evaluation
 
-## The model boundary
+`buildPayload()` projects IDs, opportunity/project names, client names, and stages only. No
+allocations, dates, probabilities, hours, or person records. The response has exactly three fields
+per candidate: `opportunity_id`, `project_id`, and `relation` (`continuation`, `unrelated`, or
+`uncertain`). Only continuations have a non-null project ID. There is no self-reported confidence
+field and no generated staffing narrative.
 
-Arithmetic stays arithmetic. The over-allocation math is deterministic, auditable, and cheap — a model is
-never asked to add percentages. The LLM does one bounded job: a second-pass review over the *normalized
-snapshot plus the deterministic findings*, returning at most five additional risks under a strict JSON schema.
+`verifyLinks()` checks offered IDs, resolved records, client agreement, duplicate decisions, and
+candidate coverage. Missing/rejected decisions are distinct from unrelated/uncertain decisions and
+cause `incomplete_response`. Request/schema failures yield no links; deterministic detectors remain
+available. Every run exposes `modelDispositions`, rejection reasons, and `modelMetadata` (requested
+and response model, response ID, prompt version/hash, payload hash, reasoning effort).
 
-Grounding is enforced in code, not in the prompt: `normalizedSnapshot()` builds the set of legal source ids
-while serializing, and every model-returned risk whose sources aren't all in that set — or that reuses a
-deterministic finding's sources — is discarded silently. Widen the model's remit only by widening that set.
-
-A review failure never blocks deterministic alerts; it surfaces as `reviewError` in the response and a note
-in the message. Silence is a valid outcome: no findings means no Slack post.
+`clientMatchBaseline` counts same-client active projects. One candidate does not prove continuity;
+several candidates expose ambiguity but do not prove a model answer is correct. The demo adds one
+synthetic competing project and is not production evidence. Fixed labels, evaluation limits, and
+recorded comparisons live in `eval/EXPECTATIONS.md` and `eval/results.json`; README has the exact
+reproduction command. Never infer model quality from a single demo or silently change the default.
 
 ## Conventions
 
-- Deno stdlib and `fetch` only; `zod` is the sole dependency and parses every external row at the boundary.
-- `strict`, `noUncheckedIndexedAccess`, `exactOptionalPropertyTypes` are on — index access yields `T | undefined`.
-- Single quotes, semicolons, 100 columns (`deno fmt` enforces).
-- Comments explain *why a decision was made*, especially where the data was messy. Keep that density;
-  the decision log is derived from them.
-- Detector output funnels through the `Finding` union in `finding.ts`. A new risk clause = a new
-  `FindingType` member + a file in `src/detectors/`, not a new message shape.
-
-## The demo switch
-
-`GET /run?dry=1&demo=1` appends one synthetic active project (`src/demo.ts` — demo data, not a
-fixture, safe to delete). It exists to answer a specific debrief question honestly: on the real
-fixtures every client has exactly one active project, so `clientName === accountName` resolves
-every link and the model is redundant. The demo adds a second concurrent Halden project so that
-match returns two candidates and only the free-text names can choose.
-
-`clientMatchBaseline` in `src/baseline.ts` reports, on every run, how many projects that plain
-rule would have returned per candidate. 1 means arithmetic could have answered; 2+ means the model
-is the only thing that can. Measured each run rather than argued.
-
-Comments reference spec sections (`S02`, `S08`, `S21`) from a numbering finer than `specs/`'s eight files —
-`S21` (suppression across runs) and `S16`–`S19` (further detectors) describe work not yet built.
-`suppressedCount` is currently always `0` and there is no state between runs.
+- Zod parses external rows at the boundary; no new dependency for behavior the platform covers.
+- TypeScript uses `strict`, `noUncheckedIndexedAccess`, and `exactOptionalPropertyTypes`.
+- Single quotes, semicolons, 100 columns; use `deno fmt`.
+- Comments explain decisions and data ambiguity. Keep them aligned with implemented behavior.
+- New detector clauses use `FindingType` and `src/detectors/`, not a new message shape.
