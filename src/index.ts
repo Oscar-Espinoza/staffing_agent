@@ -6,7 +6,7 @@ import { handle, triggerRun } from './router.ts';
 // ponytail: fixed schedule, no per-tenant config; add if multiple delivery leads need
 // different cadences.
 Deno.cron('staffing risk check', '0 13 * * 1-5', async () => {
-  await triggerRun({ dryRun: false, demo: false });
+  await triggerRun({ trigger: 'cron', dryRun: false, demo: false });
 });
 
 // The entire coupling to the runtime and to the host. Deno Deploy routes to whatever

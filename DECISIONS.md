@@ -50,10 +50,12 @@ within a provider remain fatal because they make identity joins unsafe. Model fa
 deterministic findings and discloses incomplete follow-on review.
 
 Slack receives plain text with source IDs, separate review questions and data-quality notes, and an
-omitted-finding count when caps apply. Full rationale remains in the structured findings. All
-critical findings remain visible. No findings means no post. Dry runs never post; synthetic demo
-runs require dry mode. A successful Workflow Builder webhook handoff does not prove its downstream
-Slack step completed.
+omitted-finding count when the watch cap applies. Full rationale remains in the structured findings.
+All critical findings and review questions remain visible. Questions are uncapped at this small
+scale so a variable follow-on cannot hide another detected question; a larger workload would need a
+digest or explicit prioritization. This does not make model decisions deterministic. No findings
+means no post. Dry runs never post; synthetic demo runs require dry mode. A successful Workflow
+Builder webhook handoff does not prove its downstream Slack step completed.
 
 ## Hosting and growth
 

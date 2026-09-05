@@ -23,7 +23,7 @@ function finding(
   };
 }
 
-Deno.test('selection keeps all criticals and distributes capped tails across groups', () => {
+Deno.test('selection keeps all criticals and questions while capping only the watch tail', () => {
   const shown = selectShown([
     finding('critical-a', 'critical', false, 'a'),
     finding('critical-b', 'critical', false, 'b'),
@@ -44,9 +44,23 @@ Deno.test('selection keeps all criticals and distributes capped tails across gro
     'watch-b',
     'watch-c',
     'question-a-1',
+    'question-a-2',
     'question-b',
     'question-c',
   ]);
+});
+
+Deno.test('adding Auralis preserves every existing question and their relative order', () => {
+  const questions = ['Simon', 'Devika', 'Tessellate', 'Halden'].map((name) =>
+    finding(name, 'watch', true, name)
+  );
+  const before = selectShown(questions).map((item) => item.id);
+  const withAuralis = [...questions, finding('Auralis', 'watch', true, 'Auralis')];
+  const after = selectShown(withAuralis).map((item) => item.id);
+
+  assertEquals(after.length, 5);
+  assertEquals(after.filter((id) => id !== 'Auralis'), before);
+  assertEquals(selectShown([...withAuralis].reverse()).map((item) => item.id), after);
 });
 
 Deno.test('Slack delivery sends exactly the Slack webhook text payload', async () => {

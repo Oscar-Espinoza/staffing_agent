@@ -14,10 +14,19 @@ rendered, so they can never disagree with the body.
 The snapshot date comes from source data, not execution time. Relative day counts refer to this
 date. A finding's quoted allocation peak date makes future commitments explicit.
 
-The message discloses omitted findings when watch/question caps apply, unavailable source paths, and
-an incomplete follow-on review when the model fails or rejects/omits answers. These notes are not
-additional staffing findings. Every critical finding is shown; no findings means no post, even if
-status or data-quality metadata exists in the run result.
+The header also identifies `Run: manual` or `Run: scheduled (cron)`. The JSON result and completion
+or failure logs carry `trigger: "manual" | "cron"`. HTTP requests (including dry/demo runs) are
+manual; only the scheduler sets cron. The trigger label does not change the source snapshot date.
+
+The message discloses omitted findings when the non-ambiguous watch cap applies, unavailable source
+paths, and an incomplete follow-on review when the model fails or rejects/omits answers. These notes
+are not additional staffing findings. Every critical finding and review question is shown; no
+findings means no post, even if status or data-quality metadata exists in the run result.
+
+Review questions are uncapped at prototype scale. An extra Auralis finding therefore adds a question
+without hiding Halden or a deterministic question. Model matching can still vary between runs; no
+decision cache is implemented. At larger volumes, use a separate digest or an explicit
+prioritization policy rather than silently reintroducing displacement.
 
 `GET /run` posts at most once and stays silent when there is nothing to say — reporting _why_ it was
 quiet rather than returning nothing. `GET /run?dry=1` runs the same analysis without Slack delivery

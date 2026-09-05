@@ -10,6 +10,6 @@ Kantata users, projects, and allocations are required. Time off, time entries, S
 ClickUp are optional and degrade to empty collections when unavailable or malformed. Duplicate
 provider emails remain a fatal identity error.
 
-Thresholds live in `config.ts`: a 30-day horizon, a 70% probability floor for likely deals, and caps
-that bound only the watch and question sections. ClickUp is activity context, never capacity
-evidence.
+Thresholds live in `config.ts`: a 30-day horizon, a 70% probability floor for likely deals, and a
+cap on non-ambiguous watch findings. Critical findings and review questions are not capped. ClickUp
+is activity context, never capacity evidence.

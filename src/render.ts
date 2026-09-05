@@ -1,4 +1,5 @@
 import type { Finding } from './finding.ts';
+import type { RunTrigger } from './config.ts';
 
 export type RenderFinding =
   & Pick<
@@ -11,6 +12,7 @@ export type RenderInput = {
   /** Already ordered and capped upstream — this is exactly the "shown" set, nothing more. */
   findings: RenderFinding[];
   referenceDate: string;
+  trigger: RunTrigger;
   /** Source paths S02 pushed onto `degraded`, e.g. `/kantata/time_entries`. */
   degradedSources: string[];
   omittedFindings?: number;
@@ -61,6 +63,7 @@ export function render(input: RenderInput): string {
   const sections = [
     [
       `🚨 Staffing snapshot — as of ${humanDate(input.referenceDate)}`,
+      `Run: ${input.trigger === 'cron' ? 'scheduled (cron)' : 'manual'}`,
       `${risks.length} risk${risks.length === 1 ? '' : 's'} ${
         risks.length === 1 ? 'needs' : 'need'
       } attention · ${questions.length} item${questions.length === 1 ? '' : 's'} ${

@@ -22,6 +22,9 @@ context. Demo requests without dry mode are rejected. Deno cron runs real checks
 13:00 UTC using the same trigger. There is no persisted deduplication, suppression, or new/worsening
 detection; `/last` is not durable history.
 
+Run results and logs carry `trigger: "manual" | "cron"`; messages show the trigger below the
+source-data snapshot date. HTTP runs are manual, including dry/demo requests.
+
 Only `MOCK_API_BASE_URL` is required. `OPENAI_API_KEY` and `SLACK_WEBHOOK_URL` are optional;
 `OPENAI_MODEL` defaults to `gpt-5.6-luna`, `PORT` to 8080. Read config per request so liveness works
 before secrets exist. Missing model configuration preserves deterministic findings with
@@ -42,10 +45,10 @@ before secrets exist. Missing model configuration preserves deterministic findin
    records before arithmetic.
 4. `linker.ts` makes one bounded Responses call to match candidate opportunities to active projects.
    `detectors/follow-on.ts` turns verified continuations into review questions.
-5. `run.ts` selects every critical finding plus bounded, group-balanced watch/question tails.
-   `render.ts` assembles plain-text findings, source IDs, omitted count, data-quality notes, and
-   incomplete-review warnings. Full rationale remains in the structured findings. `run.ts` delivers
-   at most one message and logs metadata.
+5. `run.ts` selects every critical finding and review question, plus a bounded, group-balanced watch
+   tail. `render.ts` assembles plain-text findings, source IDs, omitted count, data-quality notes,
+   and incomplete-review warnings. Full rationale remains in the structured findings. `run.ts`
+   delivers at most one message and logs metadata.
 
 ## Invariants
 

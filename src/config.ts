@@ -6,26 +6,13 @@ export const MAX_RETRY_AFTER_MS = 5_000;
 /** Days past the reference date a detector's "right now" window extends — S08. */
 export const HORIZON_DAYS = 30;
 
-/**
- * Capped per section, not per message. One cap over a flat list drops by array position, which
- * silently made every question and every model-linked finding unreachable behind seven risks.
- *
- * A critical finding is never dropped — it is by definition the thing worth interrupting someone
- * for, and hiding one behind "2 more not shown" cost a 284% overrun its place in the message.
- * These caps bound the watch and question sections only.
- * ponytail: unbounded criticals are fine at 8 clients; at 500 projects this needs real ranking
- * (imminence x magnitude), not a bigger number.
- */
+/** Only non-ambiguous watch findings are capped; criticals and review questions stay visible. */
 export const MAX_WATCH_PER_MESSAGE = 3;
-export const MAX_QUESTIONS_PER_MESSAGE = 3;
 
-/**
- * Deliberately smaller than the message cap. A model given five slots fills five slots: at that
- * width it started reporting bare vacations as risks and crowded out deterministic findings.
- * Three forces it to choose.
- */
 /** An opportunity below this probability is not worth staffing against yet — S12. */
 export const MIN_PROBABILITY = 70;
+
+export type RunTrigger = 'manual' | 'cron';
 
 export type RuntimeConfig = {
   mockApiBaseUrl: string;

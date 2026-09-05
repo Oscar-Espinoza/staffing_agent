@@ -1,5 +1,5 @@
 import { assertEquals } from '@std/assert';
-import { handle } from './router.ts';
+import { handle, triggerRun } from './router.ts';
 
 Deno.test('root describes every endpoint without running analysis', async () => {
   const response = await handle(new Request('http://agent.test/'));
@@ -21,4 +21,21 @@ Deno.test('a demo request without dry mode is rejected before it can run', async
   const response = await handle(new Request('http://agent.test/run?demo=1'));
   assertEquals(response.status, 400);
   assertEquals(await response.json(), { error: 'Demo runs require dry=1.' });
+});
+
+Deno.test({
+  name: 'entrypoints retain their trigger on failure and HTTP cannot impersonate cron',
+  permissions: { env: false, net: false },
+  async fn() {
+    // Denied config access fails before any source, model, or Slack request.
+    const response = await handle(new Request('http://agent.test/run?dry=1&trigger=cron'));
+    assertEquals(response.status, 500);
+    const manual = await response.json();
+    assertEquals(manual.result.trigger, 'manual');
+
+    const scheduled = await triggerRun({ trigger: 'cron', dryRun: false, demo: false });
+    assertEquals((scheduled.result as { trigger: string }).trigger, 'cron');
+    const last = await handle(new Request('http://agent.test/last'));
+    assertEquals((await last.json()).result.trigger, 'cron');
+  },
 });

@@ -1,4 +1,4 @@
-import { MAX_QUESTIONS_PER_MESSAGE, MAX_WATCH_PER_MESSAGE, type RuntimeConfig } from './config.ts';
+import { MAX_WATCH_PER_MESSAGE, type RuntimeConfig, type RunTrigger } from './config.ts';
 import { detectOverAllocated } from './detectors/over-allocated.ts';
 import { detectScaleAmbiguous } from './detectors/scale-ambiguous.ts';
 import { detectDeadDeal } from './detectors/dead-deal.ts';
@@ -15,6 +15,7 @@ import { fetchSnapshot } from './snapshot.ts';
 
 type RunOptions = {
   config: RuntimeConfig;
+  trigger: RunTrigger;
   dryRun: boolean;
   /** Injects the synthetic second Halden project — see src/demo.ts. Demo only. */
   demo: boolean;
@@ -47,11 +48,7 @@ export async function deliver(
   }
 }
 
-/**
- * Every critical, then a bounded tail. A single cap over one flat list drops by position, which
- * buried the model-linked findings behind the deterministic ones that always arrive first — and
- * capping risks at all still hid a critical 284% overrun behind the deterministic five.
- */
+/** Stable display order independent of detector or provider response order. */
 function compareFindings(left: Finding, right: Finding): number {
   return left.group.kind.localeCompare(right.group.kind) ||
     left.group.label.localeCompare(right.group.label) ||
@@ -93,11 +90,15 @@ export function selectShown(findings: Finding[]): Finding[] {
   return [
     ...critical.sort(compareFindings),
     ...groupFairly(watch, MAX_WATCH_PER_MESSAGE),
-    ...groupFairly(questions, MAX_QUESTIONS_PER_MESSAGE),
+    // ponytail: show all questions at fixture scale; add a separate digest if volume grows.
+    // A variable follow-on must not displace another detected question from the message.
+    ...questions.sort(compareFindings),
   ];
 }
 
-export async function runStaffingCheck({ config, dryRun, demo }: RunOptions): Promise<object> {
+export async function runStaffingCheck(
+  { config, trigger, dryRun, demo }: RunOptions,
+): Promise<object> {
   if (demo && !dryRun) throw new Error('Demo runs require dry=1.');
   const degraded: string[] = [];
   const snapshot = await fetchSnapshot({ baseUrl: config.mockApiBaseUrl, degraded });
@@ -146,6 +147,7 @@ export async function runStaffingCheck({ config, dryRun, demo }: RunOptions): Pr
   const slackMessage = shown.length === 0 ? null : render({
     findings: shown,
     referenceDate: record.referenceDate.date,
+    trigger,
     degradedSources: degradations,
     omittedFindings,
     dataQualityNotes,
@@ -169,6 +171,7 @@ export async function runStaffingCheck({ config, dryRun, demo }: RunOptions): Pr
     await deliver(config.slackWebhookUrl, message);
   }
   const result = {
+    trigger,
     dryRun,
     demo,
     delivered,

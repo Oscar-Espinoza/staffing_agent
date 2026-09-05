@@ -12,9 +12,9 @@ accepted links, their calculations and findings are reproducible.
 | 4            | `unstaffed-demand`     | A likely deal inside the horizon whose account has no matching active project in the retrieved Kantata data.                                                        |
 | 5 (question) | `follow-on`            | A verified continuation may close before current delivery finishes with an active allocated team. Asks for the new schedule and team; never claims proven overload. |
 
-Ordering favours the reader over the cap: every critical finding is shown, and the caps bound only
-the watch and question tails. Hiding a critical behind "N more not shown" defeats the point of
-severity.
+Every critical finding and review question is shown. Only the non-ambiguous watch tail is capped.
+Questions have a stable display order, so an added follow-on cannot displace another detected
+question. This preserves visibility, not model-decision determinism.
 
 Ambiguous-scale allocations are excluded from confident claims everywhere, and a person skipped for
 that reason is surfaced as a question rather than silently dropped.

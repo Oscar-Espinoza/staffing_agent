@@ -1,4 +1,4 @@
-import { runtimeConfig } from './config.ts';
+import { runtimeConfig, type RunTrigger } from './config.ts';
 import { runStaffingCheck } from './run.ts';
 
 /** In-memory on purpose: a viewing convenience, not durable delivery state. Empty after a redeploy. */
@@ -13,7 +13,7 @@ function readable(body: unknown, status = 200): Response {
 
 /** Shared by the /run route and Deno.cron so both go through one path and update `lastRun`. */
 export async function triggerRun(
-  options: { dryRun: boolean; demo: boolean },
+  options: { trigger: RunTrigger; dryRun: boolean; demo: boolean },
 ): Promise<{ at: string; result: object }> {
   const at = new Date().toISOString();
   try {
@@ -21,8 +21,8 @@ export async function triggerRun(
     lastRun = { at, result };
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Run failed';
-    lastRun = { at, result: { error: message } };
-    console.error(JSON.stringify({ event: 'staffing_check_failed', at }));
+    lastRun = { at, result: { error: message, trigger: options.trigger } };
+    console.error(JSON.stringify({ event: 'staffing_check_failed', at, trigger: options.trigger }));
   }
   return lastRun;
 }
@@ -62,7 +62,7 @@ export async function handle(req: Request): Promise<Response> {
     if (demo && !dryRun) {
       return readable({ error: 'Demo runs require dry=1.' }, 400);
     }
-    const run = await triggerRun({ dryRun, demo });
+    const run = await triggerRun({ trigger: 'manual', dryRun, demo });
     return readable(run, 'error' in run.result ? 500 : 200);
   }
 
