@@ -60,7 +60,7 @@ export function render(input: RenderInput): string {
       .join('\n\n');
   const sections = [
     [
-      `🚨 Staffing check — ${humanDate(input.referenceDate)}`,
+      `🚨 Staffing snapshot — as of ${humanDate(input.referenceDate)}`,
       `${risks.length} risk${risks.length === 1 ? '' : 's'} ${
         risks.length === 1 ? 'needs' : 'need'
       } attention · ${questions.length} item${questions.length === 1 ? '' : 's'} ${

@@ -5,8 +5,8 @@ import type { ModelRecord } from '../model-record.ts';
 const UNSTAFFED_DEMAND = 'UNSTAFFED_DEMAND';
 
 /**
- * S19 rule 3 — likely incoming work that cannot be staffed, because the account it lands on has
- * no Kantata project at all. The account link is the one already on ModelProject (S04), never a
+ * S19 rule 3 — likely incoming work with no matching Active project in the retrieved Kantata data.
+ * The account link is the one already on ModelProject (S04), never a
  * second mapping. A deal with no estimated hours is asked about, not sized at zero.
  */
 export function detectUnstaffedDemand(record: ModelRecord): Finding[] {
@@ -37,17 +37,19 @@ export function detectUnstaffedDemand(record: ModelRecord): Finding[] {
         type: UNSTAFFED_DEMAND,
         severity: 'critical',
         group: { kind: 'account', id: opportunity.accountId, label: accountName },
-        title: `${opportunity.name} — no team to land on`,
+        title: `${opportunity.name} — no active project recorded`,
         detail: hours === null
           ? `Salesforce lists it at ${opportunity.probability}% with a ${closeDate} close, ` +
-            `${daysOut} days out, but its estimated delivery hours are blank and ${accountName} ` +
-            'has no Kantata project.'
+            `${daysOut} days out, but its estimated delivery hours are blank. No matching active ` +
+            `project for ${accountName} was found in the retrieved Kantata data.`
           : `Salesforce lists it at ${opportunity.probability}% with a ${closeDate} close, ` +
-            `${daysOut} days out, needing ${hours} delivery hours, and ${accountName} has no ` +
-            'Kantata project and nobody allocated.',
+            `${daysOut} days out, and estimates ${hours} delivery hours. No matching active ` +
+            `project for ${accountName} was found in the retrieved Kantata data.`,
         rationale: hours === null
-          ? `How many delivery hours should be planned for ${accountName}?`
-          : `${hours} hours of work is about to arrive with no team standing behind it.`,
+          ? `Confirm the staffing plan and estimated delivery hours for ${accountName}; ` +
+            'a sales close date does not establish when delivery starts.'
+          : `Confirm the staffing plan for ${accountName} if this deal closes; ` +
+            'estimated hours and a sales close date do not establish when delivery starts.',
         metrics: hours === null
           ? { probability: opportunity.probability, daysOut }
           : { probability: opportunity.probability, daysOut, estimatedDeliveryHours: hours },

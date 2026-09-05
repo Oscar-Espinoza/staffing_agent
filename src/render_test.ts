@@ -6,7 +6,7 @@ const risk = {
   severity: 'critical' as const,
   title: 'M. Ferreira — 140% allocated',
   detail: '80% on Veridia + 60% on Corvane against a 40h/week capacity.',
-  rationale: 'This creates an immediate capacity conflict across both active projects.',
+  rationale: 'Recorded concurrent allocations exceed capacity on 2026-08-19.',
   sources: ['kantata:allocations/a_9001', 'kantata:allocations/a_9002', 'kantata:users/u_10024'],
   ambiguous: false,
   group: { kind: 'person' as const, id: 'u_10024', label: 'M. Ferreira' },
@@ -16,9 +16,8 @@ const question = {
   id: 'SCALE_AMBIGUOUS:a_9004',
   severity: 'watch' as const,
   title: 'Quillspace — Devika Balasubramanian',
-  detail:
-    "Kantata lists Devika's allocation as 0.25, while most allocations use values like 50 or " +
-    "80.\nIt's unclear whether 0.25 means 0.25% or 25%, so Devika's workload can't be " +
+  detail: "Kantata lists Devika's allocation as 0.25.\nIt's unclear whether 0.25 means 0.25% or " +
+    "25%, so Devika's exact workload can't be " +
     'calculated reliably.',
   rationale: '',
   sources: ['kantata:allocations/a_9004'],
@@ -35,7 +34,7 @@ Deno.test('renders a compact risk and question digest', () => {
   assertEquals(
     message,
     [
-      '🚨 Staffing check — 19 Aug 2026',
+      '🚨 Staffing snapshot — as of 19 Aug 2026',
       '1 risk needs attention · 1 item needs review',
       '',
       '• M. Ferreira — 140% allocated',
@@ -46,8 +45,8 @@ Deno.test('renders a compact risk and question digest', () => {
       'Needs review',
       '',
       '• Quillspace — Devika Balasubramanian',
-      "  Kantata lists Devika's allocation as 0.25, while most allocations use values like 50 or 80.",
-      "  It's unclear whether 0.25 means 0.25% or 25%, so Devika's workload can't be calculated reliably.",
+      "  Kantata lists Devika's allocation as 0.25.",
+      "  It's unclear whether 0.25 means 0.25% or 25%, so Devika's exact workload can't be calculated reliably.",
       '  Sources: Kantata allocations a_9004',
     ].join('\n'),
   );
@@ -62,7 +61,7 @@ Deno.test('renders plural risk counts without an empty review section', () => {
   assertEquals(
     message,
     [
-      '🚨 Staffing check — 19 Aug 2026',
+      '🚨 Staffing snapshot — as of 19 Aug 2026',
       '2 risks need attention · 0 items need review',
       '',
       '• M. Ferreira — 140% allocated',

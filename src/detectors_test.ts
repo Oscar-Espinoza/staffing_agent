@@ -135,7 +135,24 @@ Deno.test('unavailable capacity names the inactive person and the approved leave
     'LEAVE_COLLISION:to_301',
   ]);
   assertEquals(findings[0]?.title, 'Desmond Kerrigan — inactive but still allocated');
+  assertEquals(findings[0]?.metrics, { allocationPct: 50 });
+  assertEquals(findings[0]?.sources, [
+    'kantata:allocations/a_9011',
+    'kantata:users/u_10099',
+    'kantata:projects/p_5004',
+  ]);
+  assertEquals(
+    findings[0]?.rationale,
+    'The plan includes a 50% allocation for a user marked inactive; confirm availability or replacement coverage.',
+  );
   assertEquals(findings[1]?.metrics.allocationPct, 90);
+  assertEquals(findings[1]?.sources, [
+    'kantata:time_off/to_301',
+    'kantata:users/u_10052',
+    'kantata:allocations/a_9009',
+    'kantata:projects/p_5001',
+  ]);
+  assertEquals(findings[1]?.rationale.includes('confirm planned coverage'), true);
   assertEquals(
     findings.some((finding) => finding.sources.includes('kantata:time_off/to_304')),
     false,
@@ -206,7 +223,7 @@ Deno.test('dead deal is a question for Active projects only', () => {
   assertEquals(findings, []);
 });
 
-Deno.test('unstaffed demand fires only for an account with no project', () => {
+Deno.test('unstaffed demand fires only for an account with no matching Active project', () => {
   const accounts = [
     { id: '001Ho00000NRD09', name: 'Kestrel Logistics', industry: 'Logistics' },
     { id: '001Ho00000ESO04', name: 'Halden', industry: 'Energy' },
@@ -300,8 +317,6 @@ Deno.test('ambiguous allocations explain both possible percentage interpretation
     allocations: [
       allocation('a_simon', 'p_corvane', 'u_simon', 100),
       allocation('a_devika', 'p_quillspace', 'u_devika', 25),
-      allocation('reference_50', 'p_corvane', 'u_simon', 50),
-      allocation('reference_80', 'p_quillspace', 'u_devika', 80),
     ],
     ambiguousAllocations: [
       { id: 'a_simon', rawPercentage: 1, normalisedPercentage: 100 },
@@ -312,20 +327,22 @@ Deno.test('ambiguous allocations explain both possible percentage interpretation
   assertEquals(findings.map(({ title, detail, metrics }) => ({ title, detail, metrics })), [
     {
       title: 'Quillspace — Devika Balasubramanian',
-      detail:
-        "Kantata lists Devika's allocation as 0.25, while most allocations use values like 50 " +
-        "or 80.\nIt's unclear whether 0.25 means 0.25% or 25%, so Devika's workload can't be " +
+      detail: "Kantata lists Devika's allocation as 0.25. It's unclear whether " +
+        'this means 0.25% or 25%, so exact utilization cannot be ' +
         'calculated reliably.',
       metrics: { rawPercentage: 0.25, normalisedPercentage: 25 },
     },
     {
       title: 'Corvane — Simon Zhao',
-      detail:
-        "Kantata lists Simon's allocation as 1.0, while most allocations use values like 50 or " +
-        "80.\nIt's unclear whether 1.0 means 1% or 100%, so Simon's workload can't be " +
+      detail: "Kantata lists Simon's allocation as 1.0. It's unclear whether " +
+        'this means 1% or 100%, so exact utilization cannot be ' +
         'calculated reliably.',
       metrics: { rawPercentage: 1, normalisedPercentage: 100 },
     },
+  ]);
+  assertEquals(findings.map((finding) => finding.sources), [
+    ['kantata:allocations/a_devika', 'kantata:users/u_devika', 'kantata:projects/p_quillspace'],
+    ['kantata:allocations/a_simon', 'kantata:users/u_simon', 'kantata:projects/p_corvane'],
   ]);
 });
 
@@ -361,4 +378,82 @@ Deno.test('only Active projects suppress unstaffed demand', () => {
     })],
   }));
   assertEquals(findings.map((finding) => finding.id), ['UNSTAFFED_DEMAND:006Ho00000OPP08']);
+  assertEquals(findings[0]?.title, 'Kestrel — RevOps Foundation — no active project recorded');
+  assertEquals(
+    findings[0]?.detail,
+    'Salesforce lists it at 90% with a 2026-08-28 close, 9 days out, and estimates 700 delivery hours. ' +
+      'No matching active project for Kestrel Logistics was found in the retrieved Kantata data.',
+  );
+  assertEquals(
+    findings[0]?.rationale,
+    'Confirm the staffing plan for Kestrel Logistics if this deal closes; ' +
+      'estimated hours and a sales close date do not establish when delivery starts.',
+  );
+  assertEquals(findings[0]?.sources, [
+    'salesforce:opportunities/006Ho00000OPP08',
+    'salesforce:accounts/001Ho00000NRD09',
+  ]);
+});
+
+Deno.test('future over-allocation names its date and cites the records used, regardless of project status', () => {
+  const [finding] = detectOverAllocated(record({
+    people: [matias],
+    projects: [
+      project('p_5001', 'Veridia — Account Hierarchy Redesign'),
+      project('p_5005', 'Corvane — CPQ Migration', { status: 'Completed' }),
+    ],
+    allocations: [
+      allocation('a_9001', 'p_5001', 'u_10024', 80),
+      { ...allocation('a_9002', 'p_5005', 'u_10024', 60), startDate: '2026-08-26' },
+    ],
+  }));
+  assertEquals(finding?.metrics, { allocationPct: 140, projectCount: 2 });
+  assertEquals(
+    finding?.detail,
+    'On 2026-08-26: 80% on Veridia + 60% on Corvane against a 40h/week capacity.',
+  );
+  assertEquals(
+    finding?.rationale,
+    'Recorded allocations total 140% on 2026-08-26, exceeding 100% across 2 project references; ' +
+      'review the overlapping commitments.',
+  );
+  assertEquals(finding?.sources, [
+    'kantata:allocations/a_9001',
+    'kantata:allocations/a_9002',
+    'kantata:users/u_10024',
+    'kantata:projects/p_5001',
+    'kantata:projects/p_5005',
+  ]);
+});
+
+Deno.test('missing person or project references never become fabricated source citations', () => {
+  const unknown = record({
+    allocations: [allocation('a_orphan', 'p_missing', 'u_missing', 140)],
+  });
+  const [overAllocated] = detectOverAllocated(unknown);
+  assertEquals(overAllocated?.metrics, { allocationPct: 140, projectCount: 1 });
+  assertEquals(overAllocated?.sources, ['kantata:allocations/a_orphan']);
+
+  const [scale] = detectScaleAmbiguous(record({
+    allocations: [allocation('a_orphan', 'p_missing', 'u_missing', 100)],
+    ambiguousAllocations: [{ id: 'a_orphan', rawPercentage: 1, normalisedPercentage: 100 }],
+  }));
+  assertEquals(scale?.sources, ['kantata:allocations/a_orphan']);
+
+  const [inactive] = detectUnavailableCapacity(record({
+    people: [desmond],
+    allocations: [allocation('a_orphan', 'p_missing', 'u_10099', 50)],
+  }));
+  assertEquals(inactive?.sources, ['kantata:allocations/a_orphan', 'kantata:users/u_10099']);
+
+  const [leave] = detectUnavailableCapacity(record({
+    projects: [project('p_5001', 'Veridia — Account Hierarchy Redesign')],
+    allocations: [allocation('a_9009', 'p_5001', 'u_10052', 90)],
+    timeOff: [vacation],
+  }));
+  assertEquals(leave?.sources, [
+    'kantata:time_off/to_301',
+    'kantata:allocations/a_9009',
+    'kantata:projects/p_5001',
+  ]);
 });

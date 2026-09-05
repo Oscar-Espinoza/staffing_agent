@@ -47,11 +47,14 @@ export function detectUnavailableCapacity(record: ModelRecord): Finding[] {
         `${person.name} is flagged inactive in Kantata yet holds a ${allocation.percentage}% ` +
         `allocation on ${project?.title ?? allocation.projectId} running ${allocation.startDate} ` +
         `to ${allocation.endDate}.`,
-      rationale:
-        'That capacity is on the plan but nobody is there to deliver it, so the project is short ' +
-        `${allocation.percentage}% of a person without anyone noticing.`,
+      rationale: `The plan includes a ${allocation.percentage}% allocation for a user marked ` +
+        'inactive; confirm availability or replacement coverage.',
       metrics: { allocationPct: allocation.percentage },
-      sources: [`kantata:allocations/${allocation.id}`, `kantata:users/${allocation.userId}`],
+      sources: [
+        `kantata:allocations/${allocation.id}`,
+        `kantata:users/${allocation.userId}`,
+        ...(project ? [`kantata:projects/${project.id}`] : []),
+      ],
       ambiguous: false,
       fingerprint: `${INACTIVE_ALLOCATED}:${allocation.userId}:${allocation.projectId}`,
     });
@@ -103,11 +106,12 @@ export function detectUnavailableCapacity(record: ModelRecord): Finding[] {
         `${personName} is ${allocationPct}% committed to ${projectTitles.join(', ')} during ` +
         `approved ${leave.type.toLowerCase()} from ${leave.startDate} to ${leave.endDate}, ` +
         `starting in ${startsInDays} days.`,
-      rationale: `The project runs past the leave, so ${allocationPct}% of committed capacity ` +
-        'disappears mid-delivery unless the plan is reworked first.',
+      rationale: `Recorded commitments total ${allocationPct}% on ${peak.date} during approved ` +
+        'leave, and the referenced projects are scheduled to finish after it; confirm planned coverage.',
       metrics: { allocationPct, startsInDays },
       sources: [
         `kantata:time_off/${leave.id}`,
+        ...(person ? [`kantata:users/${leave.userId}`] : []),
         ...peak.rows.map((row) => `kantata:allocations/${row.id}`),
         ...[...new Set(peak.rows.map((row) => row.projectId))].map(
           (projectId) => `kantata:projects/${projectId}`,

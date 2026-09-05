@@ -50,8 +50,8 @@ export function detectOverAllocated(record: ModelRecord): Finding[] {
       .join(' + ');
     const capacity = person?.weeklyCapacityHours;
     const detail = capacity == null
-      ? `${split}.`
-      : `${split} against a ${capacity}h/week capacity.`;
+      ? `On ${peak.date}: ${split}.`
+      : `On ${peak.date}: ${split} against a ${capacity}h/week capacity.`;
 
     findings.push({
       id: `OVER_ALLOCATED:${userId}`,
@@ -60,13 +60,15 @@ export function detectOverAllocated(record: ModelRecord): Finding[] {
       group: { kind: 'person', id: userId, label: personName },
       title: `${personName} — ${allocationPct}% allocated`,
       detail,
-      rationale: `This creates an immediate capacity conflict across ${
-        projectCount === 2 ? 'both' : `all ${projectCount}`
-      } active projects.`,
+      rationale: `Recorded allocations total ${allocationPct}% on ${peak.date}, exceeding 100% ` +
+        `across ${projectCount} project references; review the overlapping commitments.`,
       metrics: { allocationPct, projectCount },
       sources: [
         ...sortedRows.map((row) => `kantata:allocations/${row.id}`),
-        `kantata:users/${userId}`,
+        ...(person ? [`kantata:users/${userId}`] : []),
+        ...[...new Set(sortedRows.map((row) => row.projectId))]
+          .filter((projectId) => clientByProjectId.has(projectId))
+          .map((projectId) => `kantata:projects/${projectId}`),
       ],
       ambiguous: false,
       // Bucketed to the nearest 10 points — S21 owns the final bucketing rule for suppression.

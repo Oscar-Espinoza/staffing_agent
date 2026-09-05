@@ -1,9 +1,10 @@
 # Staffing Risk Agent: decisions and scaling
 
 Staffing risk means confirmed work exceeding capacity, unavailable committed people, allocations
-against lost business, likely incoming work without a project, or a possible follow-on competing
-with current delivery. The horizon is 30 days from a reference date derived from the fixtures. This
-build detects current conditions; it cannot tell whether they are new or worsening.
+against lost business, likely incoming work without a matching active project recorded, or a
+possible follow-on competing with current delivery. The horizon is 30 days from a reference date
+derived from the fixtures. This build detects current conditions; it cannot tell whether they are
+new or worsening.
 
 ## Data and model boundary
 
@@ -33,6 +34,12 @@ All staffing calculations, severity, and text are deterministic. Even a verified
 only a review question: a sales close is not a delivery start, and the existing project's due date
 is not the new work's deadline. Estimated total hours alone cannot establish weekly demand or
 overload. The alert asks for the schedule and team needed to assess capacity.
+
+Grounding applies to code-written text too: alerts distinguish recorded plans from actual coverage,
+pipeline estimates from guaranteed work, and missing active project records from a nonexistent team.
+The header labels the source-data snapshot date; allocation peaks include their evaluated date.
+Known person/project records behind names are included in citations. These are evidence and wording
+clarifications, not changes to risk thresholds or which findings qualify.
 
 ## Failure and delivery policy
 

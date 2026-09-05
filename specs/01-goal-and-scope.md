@@ -10,7 +10,7 @@ Staffing risk has five clauses, assessed against a 30-day horizon and readable s
 1. Confirmed work exceeds capacity.
 2. Capacity we are counting on is not actually available.
 3. Committed capacity points at lost business.
-4. Likely incoming work has no project in the delivery system.
+4. Likely incoming work has no matching active project recorded in the delivery system.
 5. A possible follow-on needs its schedule and team checked against current delivery commitments.
 
 The last clause is always a review question: sales dates alone do not prove delivery overlap.

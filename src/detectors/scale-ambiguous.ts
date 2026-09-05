@@ -22,7 +22,8 @@ export function detectScaleAmbiguous(record: ModelRecord): Finding[] {
     )
     .sort((left, right) => (left.id < right.id ? -1 : left.id > right.id ? 1 : 0))
     .map((allocation) => {
-      const personName = record.personIndex[allocation.userId]?.name ?? allocation.userId;
+      const person = record.personIndex[allocation.userId];
+      const personName = person?.name ?? allocation.userId;
       const firstName = personName.split(' ')[0] ?? personName;
       const client = clientByProjectId.get(allocation.projectId) ?? allocation.projectId;
       const ambiguity = ambiguousById.get(allocation.id)!;
@@ -37,17 +38,21 @@ export function detectScaleAmbiguous(record: ModelRecord): Finding[] {
         group: { kind: 'person', id: allocation.userId, label: personName },
         title: `${client} — ${personName}`,
         detail:
-          `Kantata lists ${firstName}'s allocation as ${rawPercentage}, while most allocations ` +
-          `use values like 50 or 80.\nIt's unclear whether ${rawPercentage} means ` +
-          `${literalPercentage}% or ${allocation.percentage}%, so ${firstName}'s workload can't ` +
-          'be ' +
+          `Kantata lists ${firstName}'s allocation as ${rawPercentage}. It's unclear whether ` +
+          `this means ${literalPercentage}% or ${allocation.percentage}%, so exact utilization cannot be ` +
           'calculated reliably.',
         rationale: '',
         metrics: {
           rawPercentage: ambiguity.rawPercentage,
           normalisedPercentage: allocation.percentage,
         },
-        sources: [`kantata:allocations/${allocation.id}`],
+        sources: [
+          `kantata:allocations/${allocation.id}`,
+          ...(person ? [`kantata:users/${allocation.userId}`] : []),
+          ...(clientByProjectId.has(allocation.projectId)
+            ? [`kantata:projects/${allocation.projectId}`]
+            : []),
+        ],
         ambiguous: true,
         fingerprint: `SCALE_AMBIGUOUS:${allocation.id}`,
       } satisfies Finding;
