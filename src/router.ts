@@ -39,8 +39,14 @@ export async function handle(req: Request): Promise<Response> {
   if (req.method === 'GET' && url.pathname === '/') {
     return readable({
       service: 'staffing-risk-agent',
-      trigger: '/run?dry=1 for a full message with no side effects',
-      endpoints: ['/health', '/run', '/run?dry=1', '/run?dry=1&demo=1', '/last'],
+      trigger: '/run?dry=1 for full analysis without posting to Slack',
+      endpoints: {
+        '/health': 'Liveness check; no dependency calls.',
+        '/run': 'Run analysis and post findings to Slack if configured.',
+        '/run?dry=1': 'Run analysis without posting to Slack; updates /last.',
+        '/run?dry=1&demo=1': 'Dry run with a synthetic competing project to test matching.',
+        '/last': 'Last result in this instance; not durable history.',
+      },
     });
   }
 
