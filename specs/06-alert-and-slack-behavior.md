@@ -14,10 +14,6 @@ rendered, so they can never disagree with the body.
 The snapshot date comes from source data, not execution time. Relative day counts refer to this
 date. Over-allocation findings show the allocation overlap dates and weekday count in one compact block.
 
-The header also identifies `Run: manual` or `Run: scheduled (cron)`. The JSON result and completion
-or failure logs carry `trigger: "manual" | "cron"`. HTTP requests (including dry/demo runs) are
-manual; only the scheduler sets cron. The trigger label does not change the source snapshot date.
-
 The message discloses omitted findings when the non-ambiguous watch cap applies, unavailable source
 paths, and an incomplete follow-on review when the model fails or rejects/omits answers. These notes
 are not additional staffing findings. Every critical finding and review question is shown; no

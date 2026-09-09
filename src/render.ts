@@ -1,6 +1,5 @@
 import type { ProjectConnectionNotice } from './project-connections.ts';
 import type { Finding } from './finding.ts';
-import type { RunTrigger } from './config.ts';
 import type { ModelRecord } from './model-record.ts';
 import { allocationPeaks, horizon } from './window.ts';
 
@@ -25,7 +24,6 @@ export type RenderInput = {
   /** Already ordered and capped upstream — this is exactly the "shown" set, nothing more. */
   findings: RenderFinding[];
   referenceDate: string;
-  trigger: RunTrigger;
   /** Source paths S02 pushed onto `degraded`, e.g. `/kantata/time_entries`. */
   degradedSources: string[];
   omittedFindings?: number;
@@ -97,7 +95,6 @@ export function render(input: RenderInput): string {
   const sections = [
     [
       `Staffing snapshot · as of ${humanDate(input.referenceDate)}`,
-      `${input.trigger === 'cron' ? 'Scheduled' : 'Manual'} check · ` +
       `${risks.length} risk${risks.length === 1 ? '' : 's'} · ` +
       `${questionCount} question${questionCount === 1 ? '' : 's'}`,
     ].join('\n'),

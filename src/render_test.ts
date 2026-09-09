@@ -30,14 +30,13 @@ Deno.test('renders a compact risk and question digest', () => {
   const message = render({
     findings: [risk, question],
     referenceDate: '2026-08-19',
-    trigger: 'manual',
     degradedSources: [],
   });
   assertEquals(
     message,
     [
       'Staffing snapshot · as of 19 Aug 2026',
-      'Manual check · 1 risk · 1 question',
+      '1 risk · 1 question',
       '',
       'NEEDS ATTENTION',
       '',
@@ -57,14 +56,13 @@ Deno.test('renders plural risk counts without an empty review section', () => {
   const message = render({
     findings: [risk, { ...risk, title: 'A second risk' }],
     referenceDate: '2026-08-19',
-    trigger: 'manual',
     degradedSources: [],
   });
   assertEquals(
     message,
     [
       'Staffing snapshot · as of 19 Aug 2026',
-      'Manual check · 2 risks · 0 questions',
+      '2 risks · 0 questions',
       '',
       'NEEDS ATTENTION',
       '',
@@ -82,7 +80,6 @@ Deno.test('keeps degraded-source warnings at the bottom', () => {
     findings: [risk, question],
     referenceDate: '2026-08-19',
     degradedSources: ['/kantata/time_entries'],
-    trigger: 'manual',
   });
   assertEquals(message.includes('a_9001'), false);
   assertEquals(message.includes('/last'), false);
@@ -96,7 +93,6 @@ Deno.test('discloses omitted findings and normalization notes without model diag
     referenceDate: '2026-08-19',
     degradedSources: [],
     omittedFindings: 2,
-    trigger: 'manual',
     dataQualityNotes: ['Duplicate opportunity OPP02 dropped.'],
   });
   assertEquals(message.includes('2 additional findings omitted; see the run result.'), true);
@@ -112,25 +108,11 @@ Deno.test('renders nothing when only source degradation occurred', () => {
   assertEquals(
     render({
       findings: [],
-      trigger: 'cron',
       referenceDate: '2026-08-19',
       degradedSources: ['/kantata/time_entries'],
     }),
     '',
   );
-});
-
-Deno.test('scheduled runs label the trigger without changing the source snapshot date', () => {
-  const message = render({
-    findings: [risk],
-    referenceDate: '2026-08-19',
-    trigger: 'cron',
-    degradedSources: [],
-  });
-  assertEquals(message.split('\n').slice(0, 2), [
-    'Staffing snapshot · as of 19 Aug 2026',
-    'Scheduled check · 1 risk · 0 questions',
-  ]);
 });
 
 Deno.test('readable dates and data notes preserve the underlying audit evidence', () => {
@@ -143,7 +125,6 @@ Deno.test('readable dates and data notes preserve the underlying audit evidence'
   const message = render({
     findings: [finding],
     referenceDate: '2026-08-19',
-    trigger: 'manual',
     degradedSources: [],
     dataQualityNotes: notes,
   });
@@ -174,7 +155,6 @@ Deno.test('questions retain leave evidence without repeating their next step or 
       detail: 'Approved sick leave from 2026-08-17 to 2026-08-19. What coverage is planned?',
     }],
     referenceDate: '2026-08-19',
-    trigger: 'manual',
     degradedSources: [],
   });
   assertEquals(message.includes('NEEDS ATTENTION'), false);
@@ -200,7 +180,6 @@ Deno.test('unresolved capacity findings retain their original evidence', () => {
     const message = render({
       findings: [finding],
       referenceDate: '2026-08-19',
-      trigger: 'manual',
       degradedSources: [],
     });
     assertEquals(message.includes('Recorded evidence on 19 Aug 2026.'), true);
@@ -213,7 +192,6 @@ Deno.test('missing presentation records preserve original evidence without parti
   const message = render({
     findings: [risk],
     referenceDate: '2026-08-19',
-    trigger: 'manual',
     degradedSources: [],
   });
   assertEquals(message.endsWith(risk.title + '\n' + risk.detail), true);

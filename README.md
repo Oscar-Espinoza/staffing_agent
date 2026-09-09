@@ -20,8 +20,9 @@ still run and the result reports `modelStatus: "not_configured"`. `SLACK_WEBHOOK
 when absent, a non-dry run returns its message but records `delivered: false`. `OPENAI_MODEL`
 defaults to `gpt-5.6-luna`. An existing environment value overrides this fallback.
 
-`GET /run` can deliver a real message. Deno cron runs the same trigger at 13:00 UTC Monday–Friday.
-There is no persistent deduplication or new/worsening detection: unchanged findings can recur.
+`GET /run` can deliver a real message, and it is the only thing that starts a run — there is no
+scheduler. There is no persistent deduplication or new/worsening detection: unchanged findings can
+recur.
 Follow-ons are review questions until their delivery schedule and team are known; a sales close date
 does not establish a delivery start date.
 

@@ -154,7 +154,6 @@ Deno.test('question-only runs preserve model status, silence, dry-run, and deliv
               openAiModel: 'test-model',
               slackWebhookUrl: webhook,
             },
-            trigger: 'manual',
             dryRun,
             demo: false,
           }) as {

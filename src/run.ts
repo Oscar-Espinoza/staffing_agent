@@ -1,4 +1,4 @@
-import { MAX_WATCH_PER_MESSAGE, type RuntimeConfig, type RunTrigger } from './config.ts';
+import { MAX_WATCH_PER_MESSAGE, type RuntimeConfig } from './config.ts';
 import { detectOverAllocated } from './detectors/over-allocated.ts';
 import { detectScaleAmbiguous } from './detectors/scale-ambiguous.ts';
 import { detectDeadDeal } from './detectors/dead-deal.ts';
@@ -16,7 +16,6 @@ import { fetchSnapshot } from './snapshot.ts';
 
 type RunOptions = {
   config: RuntimeConfig;
-  trigger: RunTrigger;
   dryRun: boolean;
   /** Injects the synthetic second Halden project — see src/demo.ts. Demo only. */
   demo: boolean;
@@ -98,7 +97,7 @@ export function selectShown(findings: Finding[]): Finding[] {
 }
 
 export async function runStaffingCheck(
-  { config, trigger, dryRun, demo }: RunOptions,
+  { config, dryRun, demo }: RunOptions,
 ): Promise<object> {
   if (demo && !dryRun) throw new Error('Demo runs require dry=1.');
   const degraded: string[] = [];
@@ -150,7 +149,6 @@ export async function runStaffingCheck(
     findingContext: buildFindingContext(record, shown),
     projectConnectionNotices,
     referenceDate: record.referenceDate.date,
-    trigger,
     degradedSources: degradations,
     omittedFindings,
     dataQualityNotes,
@@ -173,7 +171,6 @@ export async function runStaffingCheck(
     await deliver(config.slackWebhookUrl, message);
   }
   const result = {
-    trigger,
     dryRun,
     demo,
     delivered,

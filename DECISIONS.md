@@ -59,9 +59,13 @@ Builder webhook handoff does not prove its downstream Slack step completed.
 
 ## Hosting and growth
 
-The service uses Deno Deploy, with the mock API hosted separately on Render. HTTP supports manual
-review; Deno cron runs weekdays at 13:00 UTC. `/last` is isolate memory only. There is no database,
-durable deduplication, alert suppression, or authentication on the prototype trigger.
+The service uses Deno Deploy, with the mock API hosted separately on Render. `GET /run` is the only
+thing that starts a check: runs are operator-triggered, on demand. A scheduler was considered and
+removed — a fixed weekday cadence posts whether or not anything changed, and with no persisted
+suppression that trains the channel to ignore the agent. Because manual became the only trigger, the
+`trigger` field went with it rather than remaining a value that can only ever read `manual`.
+`/last` is isolate memory only. There is no database, durable deduplication, alert suppression, or
+authentication on the prototype trigger.
 
 At 100x, first persist identity/client mappings and findings, then add change detection and
 deduplication, client-specific thresholds, incremental ingestion, and per-lead routing. Cache model

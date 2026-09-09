@@ -169,7 +169,6 @@ function briefing(r: ModelRecord, shown = findings(r)): string {
     findings: shown,
     findingContext: buildFindingContext(r, shown),
     referenceDate: r.referenceDate.date,
-    trigger: 'manual',
     degradedSources: [],
     dataQualityNotes: r.notes,
   });
@@ -183,7 +182,7 @@ Deno.test('complete illustrated briefing is concise, source labeled, and preserv
   assertEquals(
     message,
     `Staffing snapshot · as of 19 Aug 2026
-Manual check · 4 risks · 4 questions
+4 risks · 4 questions
 
 NEEDS ATTENTION
 
@@ -292,7 +291,6 @@ Deno.test('identical follow-on names appear once and missing cited records resto
       render({
         findings: shown,
         referenceDate: r.referenceDate.date,
-        trigger: 'manual',
         degradedSources: [],
       }),
     );
@@ -350,7 +348,6 @@ Deno.test('unconfirmed identical names appear once and notices alone render a qu
   const input = {
     findings: findings(r),
     referenceDate: r.referenceDate.date,
-    trigger: 'manual' as const,
     degradedSources: [],
     projectConnectionNotices: [{
       client: 'Auralis',
@@ -371,7 +368,6 @@ Deno.test('connection questions show shared names once with multiple candidates'
   const message = render({
     findings: [],
     referenceDate: '2026-08-19',
-    trigger: 'manual',
     degradedSources: [],
     projectConnectionNotices: [{
       client: 'Auralis',
@@ -427,7 +423,6 @@ Deno.test('connection questions label client, every candidate, and unknown clien
   const message = render({
     findings: [],
     referenceDate: '2026-08-19',
-    trigger: 'manual',
     degradedSources: [],
     projectConnectionNotices: [{
       client: 'Recorded client',

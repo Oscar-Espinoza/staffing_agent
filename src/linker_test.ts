@@ -488,7 +488,6 @@ for (const disposition of ['missing', 'uncertain'] as const) {
       findings: selectShown(findings),
       findingContext: buildFindingContext(input, findings),
       referenceDate: input.referenceDate.date,
-      trigger: 'manual',
       degradedSources: [],
       projectConnectionNotices: notices,
     });
@@ -521,7 +520,6 @@ for (const disposition of ['missing', 'uncertain'] as const) {
       render({
         findings: [],
         referenceDate: input.referenceDate.date,
-        trigger: 'manual',
         degradedSources: [],
         projectConnectionNotices: notices,
       }).includes('0 risks · 1 question\n\nNEEDS REVIEW'),
@@ -550,7 +548,6 @@ Deno.test('connection notices use all active mapped candidates and tolerate miss
   const message = render({
     findings: detectUnstaffedDemand(input),
     referenceDate: input.referenceDate.date,
-    trigger: 'manual',
     degradedSources: [],
     projectConnectionNotices: notices,
   });
@@ -569,7 +566,6 @@ Deno.test('connection notices use all active mapped candidates and tolerate miss
   const fallback = render({
     findings: detectUnstaffedDemand(record),
     referenceDate: input.referenceDate.date,
-    trigger: 'manual',
     degradedSources: [],
     projectConnectionNotices: missing,
   });
@@ -619,7 +615,6 @@ Deno.test('accepted Auralis and Halden reviews label full source names and prese
   const renderInput = {
     findings: selectShown(findings),
     referenceDate: input.referenceDate.date,
-    trigger: 'manual' as const,
     degradedSources: [],
     projectConnectionNotices: buildProjectConnectionNotices(input, verified.dispositions, findings),
   };
@@ -631,7 +626,7 @@ Deno.test('accepted Auralis and Halden reviews label full source names and prese
     message,
     [
       'Staffing snapshot · as of 19 Aug 2026',
-      'Manual check · 0 risks · 2 questions',
+      '0 risks · 2 questions',
       '',
       'NEEDS REVIEW',
       '',
@@ -699,7 +694,6 @@ Deno.test('incoming evidence preserves the differing Salesforce account name', (
     findings,
     findingContext: context,
     referenceDate: record.referenceDate.date,
-    trigger: 'manual',
     degradedSources: [],
   });
   assertEquals(message.includes('Salesforce opportunity: Kestrel — RevOps Foundation'), true);

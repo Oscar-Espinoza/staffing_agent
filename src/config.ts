@@ -12,8 +12,6 @@ export const MAX_WATCH_PER_MESSAGE = 3;
 /** An opportunity below this probability is not worth staffing against yet — S12. */
 export const MIN_PROBABILITY = 70;
 
-export type RunTrigger = 'manual' | 'cron';
-
 export type RuntimeConfig = {
   mockApiBaseUrl: string;
   openAiApiKey: string | null;

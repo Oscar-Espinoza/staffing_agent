@@ -88,7 +88,6 @@ Deno.test('lost-deal evidence uses explicit list and email joins, with structure
     findings: [finding!],
     findingContext: buildFindingContext(record, [finding!]),
     referenceDate: record.referenceDate.date,
-    trigger: 'manual',
     degradedSources: [],
   });
   assertStringIncludes(message, 'Is this project still approved to continue?');

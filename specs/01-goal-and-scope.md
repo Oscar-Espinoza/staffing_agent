@@ -18,5 +18,6 @@ Ambiguous allocation units also become questions. Data-quality notes are separat
 findings. This implementation observes current conditions; identifying new or worsening findings
 requires history that is not stored.
 
-Deno cron runs weekdays at 13:00 UTC. Persistent history, suppression of repeats, per-lead routing,
-authentication, and durable state remain out of scope. `/last` holds only the last isolate result.
+Runs are started on demand over HTTP; there is no scheduler. Persistent history, suppression of
+repeats, per-lead routing, authentication, and durable state remain out of scope. `/last` holds
+only the last isolate result.

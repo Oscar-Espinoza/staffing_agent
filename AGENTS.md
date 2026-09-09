@@ -18,12 +18,9 @@ deno test            # deterministic, linker, source, renderer, and route checks
 
 Use `GET /run?dry=1` for verification. `/run` may deliver to Slack; `/health` touches no dependency;
 `/last` shows the current isolate's last result. `/run?dry=1&demo=1` adds synthetic competing Halden
-context. Demo requests without dry mode are rejected. Deno cron runs real checks Monday–Friday at
-13:00 UTC using the same trigger. There is no persisted deduplication, suppression, or new/worsening
+context. Demo requests without dry mode are rejected. Every run is started by an HTTP
+request; there is no scheduler, and no persisted deduplication, suppression, or new/worsening
 detection; `/last` is not durable history.
-
-Run results and logs carry `trigger: "manual" | "cron"`; messages show the trigger below the
-source-data snapshot date. HTTP runs are manual, including dry/demo requests.
 
 Only `MOCK_API_BASE_URL` is required. `OPENAI_API_KEY` and `SLACK_WEBHOOK_URL` are optional;
 `OPENAI_MODEL` defaults to `gpt-5.6-luna`, `PORT` to 8080. Read config per request so liveness works
