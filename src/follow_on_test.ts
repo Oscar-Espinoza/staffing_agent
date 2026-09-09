@@ -86,7 +86,7 @@ const links = new Map([['OPP03', 'p_5004']]);
 
 Deno.test('an ambiguous follow-on explains the overlap in human terms', () => {
   const [finding] = detectFollowOn(record(null, 100), links);
-  assertEquals(finding?.title, 'Halden — Phase 3 may overlap Phase 2');
+  assertEquals(finding?.title, 'Halden — Phase 3 Scope may overlap Halden — Phase 2 Delivery');
   assertEquals(
     finding?.detail,
     'Salesforce says Phase 3 could close on Aug 26 while Phase 2 is scheduled through Nov 2.\n' +

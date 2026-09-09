@@ -1,3 +1,8 @@
+import { buildProjectConnectionNotices } from './project-connections.ts';
+import { detectFollowOn } from './detectors/follow-on.ts';
+import { detectUnstaffedDemand } from './detectors/unstaffed-demand.ts';
+import { buildFindingContext, render } from './render.ts';
+import { selectShown } from './run.ts';
 import { assertEquals } from '@std/assert';
 import { buildPayload, linkOpportunities, verifyLinks } from './linker.ts';
 import type { ModelOpportunity, ModelProject, ModelRecord } from './model-record.ts';
@@ -447,4 +452,257 @@ Deno.test('the model request asks for a grounded phase decision, not self-report
   assertEquals(payload.reasoning.effort, 'low');
   assertEquals(payload.text.format.schema.properties.links.items.anyOf.length, 2);
   assertEquals(JSON.stringify(payload.text.format.schema).includes('confidence'), false);
+});
+
+for (const disposition of ['missing', 'uncertain'] as const) {
+  Deno.test(`mocked ${disposition} decisions add only Auralis while preserving Kestrel and Halden`, () => {
+    const input = structuredClone(record);
+    input.personIndex['u_10024'] = input.people[0]!;
+    const verified = verifyLinks(
+      [
+        ...(disposition === 'uncertain'
+          ? [{
+            opportunity_id: '006Ho00000OPP02',
+            project_id: null,
+            relation: 'uncertain' as const,
+          }]
+          : []),
+        { opportunity_id: '006Ho00000OPP03', project_id: 'p_5004', relation: 'continuation' },
+      ],
+      buildPayload(input),
+      input,
+    );
+    const findings = [
+      ...detectUnstaffedDemand(input),
+      ...detectFollowOn(input, verified.links),
+    ];
+    assertEquals(findings.length, 2);
+    const before = structuredClone(findings);
+    const notices = buildProjectConnectionNotices(input, verified.dispositions, findings);
+    assertEquals(notices, [{
+      client: 'Auralis',
+      opportunity: 'Auralis — Reporting Expansion',
+      projects: ['Auralis — Ledger Reporting Bridge'],
+    }]);
+    const rendered = render({
+      findings: selectShown(findings),
+      findingContext: buildFindingContext(input, findings),
+      referenceDate: input.referenceDate.date,
+      trigger: 'manual',
+      degradedSources: [],
+      projectConnectionNotices: notices,
+    });
+    assertEquals(
+      rendered.includes([
+        'Client: Auralis',
+        'Kantata project to check: Auralis — Ledger Reporting Bridge',
+        'Salesforce opportunity: Auralis — Reporting Expansion',
+        'Project connection unconfirmed. Does this extend the existing project, or is it separate work?',
+      ].join('\n')),
+      true,
+    );
+    assertEquals(
+      rendered.includes('Salesforce opportunity: Halden — Phase 3 Scope'),
+      true,
+    );
+    assertEquals(rendered.includes('1 risk · 2 questions'), true);
+    assertEquals(rendered.includes('Veridia'), false);
+    assertEquals(
+      rendered.indexOf('NEEDS REVIEW') < rendered.indexOf('Salesforce opportunity: Halden'),
+      true,
+    );
+    assertEquals(
+      rendered.indexOf('Salesforce opportunity: Halden') <
+        rendered.indexOf('Salesforce opportunity: Auralis'),
+      true,
+    );
+    assertEquals(findings, before);
+    assertEquals(
+      render({
+        findings: [],
+        referenceDate: input.referenceDate.date,
+        trigger: 'manual',
+        degradedSources: [],
+        projectConnectionNotices: notices,
+      }).includes('0 risks · 1 question\n\nNEEDS REVIEW'),
+      true,
+    );
+  });
+}
+
+Deno.test('connection notices use all active mapped candidates and tolerate missing records', () => {
+  const input = structuredClone(record);
+  const decision = {
+    opportunityId: '006Ho00000OPP02',
+    projectId: 'rejected-id',
+    disposition: 'rejected' as const,
+  };
+  input.projects.push(
+    { ...input.projects[1]!, id: 'second', title: 'Auralis — Separate Support' },
+    { ...input.projects[1]!, id: 'closed', title: 'Closed title', status: 'Completed' },
+    { ...input.projects[1]!, id: 'unmapped', title: 'Unmapped title', salesforceAccountName: null },
+  );
+  const notices = buildProjectConnectionNotices(input, [decision], []);
+  assertEquals(notices[0]?.projects, [
+    'Auralis — Ledger Reporting Bridge',
+    'Auralis — Separate Support',
+  ]);
+  const message = render({
+    findings: detectUnstaffedDemand(input),
+    referenceDate: input.referenceDate.date,
+    trigger: 'manual',
+    degradedSources: [],
+    projectConnectionNotices: notices,
+  });
+  for (const title of notices[0]!.projects) {
+    assertEquals(message.includes(title), true);
+    assertEquals(message.split(title).length, 2);
+  }
+  assertEquals(message.includes('rejected-id'), false);
+  input.accounts = [];
+  const missing = buildProjectConnectionNotices(input, [decision], []);
+  assertEquals(missing[0], {
+    client: null,
+    opportunity: 'Auralis — Reporting Expansion',
+    projects: [],
+  });
+  const fallback = render({
+    findings: detectUnstaffedDemand(record),
+    referenceDate: input.referenceDate.date,
+    trigger: 'manual',
+    degradedSources: [],
+    projectConnectionNotices: missing,
+  });
+  assertEquals(fallback.includes('Please confirm the delivery plan.'), true);
+  assertEquals(fallback.includes('Kantata project to check:'), false);
+  input.opportunities = [];
+  assertEquals(buildProjectConnectionNotices(input, [decision], []), []);
+});
+
+Deno.test('unrelated answers and outages do not create connection notices', () => {
+  for (const disposition of ['unrelated', 'not_evaluated'] as const) {
+    assertEquals(
+      buildProjectConnectionNotices(record, [{
+        opportunityId: '006Ho00000OPP02',
+        projectId: null,
+        disposition,
+      }], []),
+      [],
+    );
+  }
+  assertEquals(
+    buildProjectConnectionNotices(record, [{
+      opportunityId: '006Ho00000OPP02',
+      projectId: null,
+      disposition: 'missing',
+    }], []).length,
+    1,
+  );
+});
+
+Deno.test('accepted Auralis and Halden reviews label full source names and preserve evidence', () => {
+  const input = structuredClone(record);
+  input.personIndex['u_10024'] = input.people[0]!;
+  input.allocations.push({ ...input.allocations[0]!, id: 'auralis-team', projectId: 'p_5002' });
+  const verified = verifyLinks(
+    [
+      { opportunity_id: '006Ho00000OPP02', project_id: 'p_5002', relation: 'continuation' },
+      { opportunity_id: '006Ho00000OPP03', project_id: 'p_5004', relation: 'continuation' },
+      { opportunity_id: '006Ho00000OPP01', project_id: null, relation: 'unrelated' },
+      { opportunity_id: '006Ho00000OPP08', project_id: null, relation: 'unrelated' },
+    ],
+    buildPayload(input),
+    input,
+  );
+  const findings = detectFollowOn(input, verified.links);
+  const before = structuredClone(findings);
+  const renderInput = {
+    findings: selectShown(findings),
+    referenceDate: input.referenceDate.date,
+    trigger: 'manual' as const,
+    degradedSources: [],
+    projectConnectionNotices: buildProjectConnectionNotices(input, verified.dispositions, findings),
+  };
+  const context = buildFindingContext(input, findings);
+  const message = render({ ...renderInput, findingContext: context });
+  assertEquals(findings.length, 2);
+  assertEquals(message.includes('0 risks · 2 questions\n\nNEEDS REVIEW'), true);
+  assertEquals(
+    message,
+    [
+      'Staffing snapshot · as of 19 Aug 2026',
+      'Manual check · 0 risks · 2 questions',
+      '',
+      'NEEDS REVIEW',
+      '',
+      'Follow-on schedule to confirm',
+      'Client: Auralis',
+      'Project: Auralis — Ledger Reporting Bridge',
+      'Salesforce opportunity: Auralis — Reporting Expansion · closes 31 Aug · 480 estimated delivery hours.',
+      'The project is scheduled in Kantata through 15 Oct.',
+      'When would delivery start, for how long, and with which team?',
+      '',
+      'Follow-on schedule to confirm',
+      'Client: Halden',
+      'Project: Halden — Phase 2 Delivery',
+      'Salesforce opportunity: Halden — Phase 3 Scope · closes 26 Aug · 480 estimated delivery hours.',
+      'The project is scheduled in Kantata through 2 Nov.',
+      'When would delivery start, for how long, and with which team?',
+    ].join('\n'),
+  );
+  assertEquals(message.includes('PROJECT CONNECTION TO CHECK'), false);
+  assertEquals(findings, before);
+  for (const disposition of ['missing', 'rejected', 'uncertain'] as const) {
+    assertEquals(
+      buildProjectConnectionNotices(input, [{
+        opportunityId: '006Ho00000OPP02',
+        projectId: null,
+        disposition,
+      }], findings),
+      [],
+    );
+  }
+
+  // Either missing source record restores the complete original finding rendering.
+  const fallback = render(renderInput);
+  for (const missing of ['opportunities', 'projects'] as const) {
+    const incomplete = { ...input, [missing]: [] };
+    assertEquals(
+      render({
+        ...renderInput,
+        findingContext: buildFindingContext(incomplete, findings),
+      }),
+      fallback,
+    );
+  }
+  for (const finding of findings) assertEquals(fallback.includes(finding.title), true);
+  // Finding IDs and group labels are not used to resolve source names.
+  const renamed = findings.map((finding) => ({
+    ...finding,
+    id: `display:${finding.id}`,
+    group: { ...finding.group, label: 'stale label' },
+  }));
+  assertEquals(
+    render({
+      ...renderInput,
+      findings: renamed,
+      findingContext: buildFindingContext(input, renamed),
+    }),
+    message,
+  );
+});
+
+Deno.test('incoming evidence preserves the differing Salesforce account name', () => {
+  const findings = detectUnstaffedDemand(record);
+  const context = buildFindingContext(record, findings);
+  const message = render({
+    findings,
+    findingContext: context,
+    referenceDate: record.referenceDate.date,
+    trigger: 'manual',
+    degradedSources: [],
+  });
+  assertEquals(message.includes('Salesforce opportunity: Kestrel — RevOps Foundation'), true);
+  assertEquals(message.includes('Client: Kestrel Logistics'), true);
+  assertEquals(message.includes('Kantata project:'), false);
 });

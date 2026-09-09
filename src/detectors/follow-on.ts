@@ -72,7 +72,7 @@ export function detectFollowOn(record: ModelRecord, links: Map<string, string>):
     findings.push({
       ...base,
       severity: 'watch',
-      title: `${project.clientName} — ${incoming} may overlap ${current}`,
+      title: `${opportunity.name} may overlap ${project.title}`,
       detail:
         `Salesforce says ${incoming} could close on ${
           SHORT_DATE.format(new Date(opportunity.closeDate))

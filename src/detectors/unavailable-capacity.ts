@@ -2,7 +2,6 @@ import type { Finding } from '../finding.ts';
 import type { ModelRecord } from '../model-record.ts';
 import { allocationPeaks, horizon, overlaps } from '../window.ts';
 
-// Cast until they exist — the union is not mine to edit.
 const INACTIVE_ALLOCATED = 'INACTIVE_ALLOCATED';
 const LEAVE_COLLISION = 'LEAVE_COLLISION';
 
@@ -16,7 +15,7 @@ function daysBetween(from: string, to: string): number {
 
 /**
  * S17 rules 3 and 4 — the two ways capacity we are counting on is not actually available.
- * Both use the same horizon, but leave is evaluated over the leave interval itself. Guessed-scale
+ * Both use the same horizon; leave is evaluated only where it intersects that window. Guessed-scale
  * rows never support a confident claim; SCALE_AMBIGUOUS asks the data question instead.
  */
 export function detectUnavailableCapacity(record: ModelRecord): Finding[] {
@@ -60,27 +59,28 @@ export function detectUnavailableCapacity(record: ModelRecord): Finding[] {
     });
   }
 
-  // Rule 4: approved leave that has not started yet, colliding with a heavy readable commitment.
+  // Rule 4: approved leave overlapping the horizon, including leave already underway.
   const leaves = record.timeOff
     .filter((leave) =>
       leave.status === 'Approved' &&
-      leave.startDate > record.referenceDate.date &&
       overlaps(leave.startDate, leave.endDate, windowStart, windowEnd)
     )
     .sort((left, right) => (left.id < right.id ? -1 : left.id > right.id ? 1 : 0));
 
   for (const leave of leaves) {
+    const leaveStart = leave.startDate < windowStart ? windowStart : leave.startDate;
+    const leaveEnd = leave.endDate > windowEnd ? windowEnd : leave.endDate;
     // Sequential work elsewhere in the horizon is not a leave conflict. Only commitments active
-    // during the leave and still owed afterwards reduce capacity.
+    // during the in-window portion of leave and still owed afterwards reduce capacity.
     const rows = record.allocations.filter((allocation) => {
       const project = projectById.get(allocation.projectId);
       return allocation.userId === leave.userId &&
         !ambiguousIds.has(allocation.id) &&
         project !== undefined &&
         project.dueDate > leave.endDate &&
-        overlaps(allocation.startDate, allocation.endDate, leave.startDate, leave.endDate);
+        overlaps(allocation.startDate, allocation.endDate, leaveStart, leaveEnd);
     });
-    const peak = allocationPeaks(rows, leave.startDate, leave.endDate)
+    const peak = allocationPeaks(rows, leaveStart, leaveEnd)
       .filter((candidate) => candidate.percentage >= LOW_HEADROOM_PCT)
       .sort((left, right) =>
         right.percentage - left.percentage || (left.date < right.date ? -1 : 1)
@@ -96,6 +96,12 @@ export function detectUnavailableCapacity(record: ModelRecord): Finding[] {
     const personName = person?.name ?? leave.userId;
     const startsInDays = daysBetween(record.referenceDate.date, leave.startDate);
 
+    const timing = startsInDays < 0
+      ? 'already underway'
+      : startsInDays === 0
+      ? 'starting today'
+      : `starting in ${startsInDays} days`;
+
     findings.push({
       id: `${LEAVE_COLLISION}:${leave.id}`,
       type: LEAVE_COLLISION,
@@ -105,7 +111,7 @@ export function detectUnavailableCapacity(record: ModelRecord): Finding[] {
       detail:
         `${personName} is ${allocationPct}% committed to ${projectTitles.join(', ')} during ` +
         `approved ${leave.type.toLowerCase()} from ${leave.startDate} to ${leave.endDate}, ` +
-        `starting in ${startsInDays} days.`,
+        `${timing}.`,
       rationale: `Recorded commitments total ${allocationPct}% on ${peak.date} during approved ` +
         'leave, and the referenced projects are scheduled to finish after it; confirm planned coverage.',
       metrics: { allocationPct, startsInDays },

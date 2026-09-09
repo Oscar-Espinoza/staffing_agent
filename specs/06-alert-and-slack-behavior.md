@@ -12,7 +12,7 @@ source API exposes no per-record URL to link to. Header counts are computed from
 rendered, so they can never disagree with the body.
 
 The snapshot date comes from source data, not execution time. Relative day counts refer to this
-date. A finding's quoted allocation peak date makes future commitments explicit.
+date. Over-allocation findings show the allocation overlap dates and weekday count in one compact block.
 
 The header also identifies `Run: manual` or `Run: scheduled (cron)`. The JSON result and completion
 or failure logs carry `trigger: "manual" | "cron"`. HTTP requests (including dry/demo runs) are

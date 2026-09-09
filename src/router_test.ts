@@ -6,7 +6,6 @@ Deno.test('root describes every endpoint without running analysis', async () => 
   assertEquals(response.status, 200);
   assertEquals(await response.json(), {
     service: 'staffing-risk-agent',
-    trigger: '/run?dry=1 for full analysis without posting to Slack',
     endpoints: {
       '/health': 'Liveness check; no dependency calls.',
       '/run': 'Run analysis and post findings to Slack if configured.',

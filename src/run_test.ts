@@ -1,5 +1,5 @@
 import { assertEquals } from '@std/assert';
-import { deliver, selectShown } from './run.ts';
+import { deliver, runStaffingCheck, selectShown } from './run.ts';
 import type { Finding } from './finding.ts';
 
 function finding(
@@ -75,4 +75,112 @@ Deno.test('Slack delivery sends exactly the Slack webhook text payload', async (
   assertEquals(request?.method, 'POST');
   assertEquals(request?.headers.get('content-type'), 'application/json');
   assertEquals(await request?.json(), { text: 'A rendered message' });
+});
+
+Deno.test('question-only runs preserve model status, silence, dry-run, and delivery rules', async () => {
+  const originalFetch = globalThis.fetch;
+  try {
+    for (const relation of ['uncertain', 'unrelated', 'failure'] as const) {
+      for (const dryRun of [true, false]) {
+        for (const webhook of [null, 'https://slack.test/hook']) {
+          const posts: unknown[] = [];
+          globalThis.fetch = async (input, init) => {
+            const request = new Request(input, init);
+            const url = new URL(request.url);
+            if (url.hostname === 'slack.test') {
+              posts.push(await request.json());
+              return new Response('ok');
+            }
+            if (url.hostname === 'api.openai.com') {
+              if (relation === 'failure') return new Response('unavailable', { status: 400 });
+              return Response.json({
+                id: 'response-test',
+                model: 'test-model',
+                output: [{
+                  content: [{
+                    type: 'output_text',
+                    text: JSON.stringify({
+                      links: [{
+                        opportunity_id: 'deal',
+                        project_id: null,
+                        relation,
+                      }],
+                    }),
+                  }],
+                }],
+              });
+            }
+            assertEquals(url.hostname, 'source.test');
+            const key = url.pathname.split('/').at(-1)!;
+            const rows = key === 'projects'
+              ? [{
+                id: 'project',
+                title: 'Auralis — Existing',
+                client_name: 'Auralis',
+                status: 'Active',
+                start_date: '2026-08-19',
+                due_date: '2026-10-01',
+                budgeted_hours: 100,
+                lead_user_id: null,
+              }]
+              : key === 'accounts'
+              ? [{
+                Id: 'account',
+                Name: 'Auralis',
+                Industry: 'Software',
+              }]
+              : key === 'opportunities'
+              ? [{
+                Id: 'deal',
+                Name: 'Auralis — Expansion',
+                AccountId: 'account',
+                StageName: 'Negotiation',
+                Amount: 100,
+                CloseDate: '2026-08-26',
+                Estimated_Delivery_Hours__c: 100,
+                Probability: 90,
+                OwnerId: '',
+              }]
+              : [];
+            return Response.json({
+              [url.pathname.startsWith('/salesforce/') ? 'records' : key]: rows,
+              ...(key === 'tasks' ? { last_page: true } : {}),
+            });
+          };
+          const result = await runStaffingCheck({
+            config: {
+              mockApiBaseUrl: 'https://source.test',
+              openAiApiKey: 'test',
+              openAiModel: 'test-model',
+              slackWebhookUrl: webhook,
+            },
+            trigger: 'manual',
+            dryRun,
+            demo: false,
+          }) as {
+            findings: unknown[];
+            message: string | null;
+            delivered: boolean;
+            quietBecause: string | null;
+            modelStatus: string;
+            projectConnectionNotices: unknown[];
+          };
+          assertEquals(result.findings, []);
+          const hasQuestion = relation === 'uncertain';
+          assertEquals(result.projectConnectionNotices.length, hasQuestion ? 1 : 0);
+          assertEquals(result.message !== null, hasQuestion);
+          assertEquals(result.quietBecause === null, hasQuestion);
+          if (hasQuestion) {
+            assertEquals(result.modelStatus, 'completed');
+            assertEquals(result.message?.includes('0 risks · 1 question\n\nNEEDS REVIEW'), true);
+          }
+          const delivered = hasQuestion && !dryRun && webhook !== null;
+          assertEquals(result.delivered, delivered);
+          assertEquals(posts, delivered ? [{ text: result.message }] : []);
+        }
+      }
+    }
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 });

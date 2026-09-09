@@ -457,3 +457,145 @@ Deno.test('missing person or project references never become fabricated source c
     'kantata:projects/p_5001',
   ]);
 });
+
+Deno.test('approved leave uses inclusive window boundaries and signed start timing', () => {
+  for (
+    const [startDate, endDate, status, timing, days] of [
+      ['2026-08-17', '2026-08-22', 'Approved', 'already underway', -2],
+      ['2026-08-19', '2026-08-22', 'Approved', 'starting today', 0],
+      ['2026-08-17', '2026-08-19', 'Approved', 'already underway', -2],
+      ['2026-08-23', '2026-09-06', 'Approved', 'starting in 4 days', 4],
+      ['2026-08-17', '2026-08-18', 'Approved', '', 0],
+      ['2026-08-17', '2026-08-22', 'Pending', '', 0],
+      ['2026-09-19', '2026-09-26', 'Approved', '', 0],
+    ] as const
+  ) {
+    const findings = detectUnavailableCapacity(record({
+      people: [marta],
+      projects: [project('p', 'Veridia')],
+      allocations: [allocation('a', 'p', vacation.userId, 80)],
+      timeOff: [{ ...vacation, startDate, endDate, status }],
+    }));
+    assertEquals(findings.length, timing ? 1 : 0);
+    if (timing) {
+      assertEquals(findings[0]?.detail.endsWith(`${timing}.`), true);
+      assertEquals(findings[0]?.metrics, { allocationPct: 80, startsInDays: days });
+    }
+  }
+});
+
+Deno.test('ongoing leave ignores past commitments and peaks beyond the horizon', () => {
+  const base = record({
+    projects: [project('p', 'Veridia')],
+    timeOff: [{ ...vacation, startDate: '2026-08-17', endDate: '2026-09-25' }],
+    allocations: [
+      { ...allocation('past', 'p', vacation.userId, 90), endDate: '2026-08-18' },
+      allocation('current', 'p', vacation.userId, 30),
+      { ...allocation('future', 'p', vacation.userId, 90), startDate: '2026-09-19' },
+    ],
+  });
+  assertEquals(detectUnavailableCapacity(base), []);
+  base.allocations[1]!.percentage = 80;
+  const [finding] = detectUnavailableCapacity(base);
+  assertEquals(finding?.metrics.allocationPct, 80);
+  assertEquals(finding?.rationale.includes('on 2026-08-19'), true);
+  assertEquals(finding?.sources.includes('kantata:allocations/past'), false);
+  assertEquals(finding?.sources.includes('kantata:allocations/future'), false);
+});
+
+Deno.test('Tomás enters the inclusive window on August 20 with the same records', () => {
+  const base = record({
+    people: [person('u_10036', 'Tomás Iglesias')],
+    projects: [
+      project('p_5007', 'Tessellate — Multi-Track Integration', { dueDate: '2026-11-13' }),
+    ],
+    allocations: [{
+      ...allocation('a_9015', 'p_5007', 'u_10036', 85),
+      startDate: '2026-08-15',
+      endDate: '2026-11-13',
+    }],
+    timeOff: [{
+      id: 'to_302',
+      userId: 'u_10036',
+      startDate: '2026-09-19',
+      endDate: '2026-09-26',
+      type: 'Vacation',
+      status: 'Approved',
+    }],
+  });
+  assertEquals(detectUnavailableCapacity(base), []);
+  const [finding] = detectUnavailableCapacity({
+    ...base,
+    referenceDate: { date: '2026-08-20', note: null },
+  });
+  assertEquals(finding?.id, 'LEAVE_COLLISION:to_302');
+  assertEquals(finding?.metrics, { allocationPct: 85, startsInDays: 30 });
+  assertEquals(detectUnavailableCapacity(base), []);
+});
+
+Deno.test('Simon keeps his uncertainty question with approved sick-leave coverage context', () => {
+  const base = record({
+    people: [person('u_10005', 'Simon Zhao')],
+    projects: [project('p_5005', 'Corvane — CPQ Migration', { dueDate: '2026-10-11' })],
+    allocations: [
+      {
+        ...allocation('a_9012', 'p_5005', 'u_10005', 100),
+        startDate: '2026-08-12',
+        endDate: '2026-10-11',
+      },
+      {
+        ...allocation('a_9018', 'p_5099', 'u_10005', 30),
+        startDate: '2026-07-31',
+        endDate: '2026-09-29',
+      },
+    ],
+    ambiguousAllocations: [{ id: 'a_9012', rawPercentage: 1, normalisedPercentage: 100 }],
+  });
+  const [original] = detectScaleAmbiguous(base);
+  const sick: ModelTimeOff = {
+    id: 'to_303',
+    userId: 'u_10005',
+    startDate: '2026-08-17',
+    endDate: '2026-08-19',
+    type: 'Sick',
+    status: 'Approved',
+  };
+  const enriched = { ...base, timeOff: [sick] };
+  const [finding] = detectScaleAmbiguous(enriched);
+  assertEquals(finding, {
+    ...original,
+    detail: original!.detail +
+      ' Approved sick from 2026-08-17 to 2026-08-19 overlaps this allocation in the analysis window. What coverage is planned during this leave?',
+    sources: ['kantata:time_off/to_303', ...original!.sources],
+  });
+  assertEquals(finding?.id, 'SCALE_AMBIGUOUS:a_9012');
+  assertEquals(finding?.severity, 'watch');
+  assertEquals(finding?.ambiguous, true);
+  assertEquals(detectUnavailableCapacity(enriched), []);
+  for (
+    const leave of [
+      { ...sick, status: 'Pending' },
+      { ...sick, endDate: '2026-08-18' },
+      { ...sick, startDate: '2026-10-12', endDate: '2026-10-15' },
+      { ...sick, userId: 'someone_else' },
+    ]
+  ) assertEquals(detectScaleAmbiguous({ ...base, timeOff: [leave] }), [original]);
+  const pastOnly = {
+    ...base,
+    allocations: [{ ...base.allocations[0]!, startDate: '2026-08-20' }],
+    timeOff: [sick],
+  };
+  assertEquals(detectScaleAmbiguous(pastOnly), [original]);
+  const leaves = [
+    { ...sick, id: 'z', startDate: '2026-08-19' },
+    { ...sick, id: 'b' },
+    { ...sick, id: 'a' },
+  ];
+  const [multiple] = detectScaleAmbiguous({ ...base, timeOff: leaves });
+  assertEquals(multiple?.sources.slice(0, 3), [
+    'kantata:time_off/a',
+    'kantata:time_off/b',
+    'kantata:time_off/z',
+  ]);
+  assertEquals(detectScaleAmbiguous({ ...base, timeOff: leaves.reverse() }), [multiple]);
+});

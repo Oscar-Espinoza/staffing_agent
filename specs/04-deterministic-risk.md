@@ -20,7 +20,8 @@ Ambiguous-scale allocations are excluded from confident claims everywhere, and a
 that reason is surfaced as a question rather than silently dropped.
 
 These risk definitions and thresholds are unchanged by grounding improvements. Over-allocation
-wording includes the evaluated peak date, not an assumed immediate conflict. Inactive-user findings
+briefings show the cited commitments’ overlap dates and weekday count; structured findings retain
+the evaluated peak date. Inactive-user findings
 describe recorded status and ask for coverage confirmation; they do not claim nobody noticed or that
 no replacement exists. Pipeline hours remain estimates, and absence of an active project is limited
 to the retrieved data, not proof that no team exists. Named people and projects are cited directly

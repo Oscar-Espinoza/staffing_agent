@@ -39,7 +39,6 @@ export async function handle(req: Request): Promise<Response> {
   if (req.method === 'GET' && url.pathname === '/') {
     return readable({
       service: 'staffing-risk-agent',
-      trigger: '/run?dry=1 for full analysis without posting to Slack',
       endpoints: {
         '/health': 'Liveness check; no dependency calls.',
         '/run': 'Run analysis and post findings to Slack if configured.',

@@ -10,7 +10,8 @@ import type { Finding } from './finding.ts';
 import { assembleModelRecord } from './model-record.ts';
 import { applyDemoScenario } from './demo.ts';
 import { clientMatchBaseline } from './baseline.ts';
-import { render } from './render.ts';
+import { buildProjectConnectionNotices } from './project-connections.ts';
+import { buildFindingContext, render } from './render.ts';
 import { fetchSnapshot } from './snapshot.ts';
 
 type RunOptions = {
@@ -130,13 +131,13 @@ export async function runStaffingCheck(
 
   const findings = [...deterministic, ...linked];
   const shown = selectShown(findings);
+  const projectConnectionNotices = buildProjectConnectionNotices(
+    record,
+    modelDispositions,
+    findings,
+  );
   const degradations = snapshot.degradations?.map((entry) => entry.path) ?? degraded;
   const omittedFindings = Math.max(findings.length - shown.length, 0);
-  const modelWarning = modelStatus === 'completed' || modelStatus === 'no_candidates'
-    ? undefined
-    : modelStatus === 'incomplete_response'
-    ? 'Some opportunity matches could not be verified; follow-on review is incomplete.'
-    : 'Opportunity matching was unavailable; follow-on review is incomplete.';
   const dataQualityNotes = [
     ...record.notes,
     ...record.unmappedClients.map((client) =>
@@ -144,14 +145,15 @@ export async function runStaffingCheck(
     ),
     ...(record.referenceDate.note === null ? [] : [record.referenceDate.note]),
   ];
-  const slackMessage = shown.length === 0 ? null : render({
+  const slackMessage = shown.length === 0 && projectConnectionNotices.length === 0 ? null : render({
     findings: shown,
+    findingContext: buildFindingContext(record, shown),
+    projectConnectionNotices,
     referenceDate: record.referenceDate.date,
     trigger,
     degradedSources: degradations,
     omittedFindings,
     dataQualityNotes,
-    ...(modelWarning === undefined ? {} : { modelWarning }),
   });
   const message = slackMessage === null
     ? null
@@ -183,6 +185,7 @@ export async function runStaffingCheck(
     linkRejections,
     modelDispositions,
     modelMetadata,
+    projectConnectionNotices,
     dataQualityNotes,
     // What the model chose, and whether a plain client-name match could have chosen it.
     modelLinks: Object.fromEntries(links),

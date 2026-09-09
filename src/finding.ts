@@ -37,7 +37,7 @@ export type Finding = {
   rationale: string;
   /** The numbers `detail` quotes, kept structured. */
   metrics: Record<string, number>;
-  /** `system:collection/id`, e.g. `kantata:allocations/a_9001` — render turns these into `Sources:`. */
+  /** `system:collection/id`, e.g. `kantata:allocations/a_9001` — retained in the structured run result. */
   sources: string[];
   /** `true` files this under NEEDS REVIEW as a question, never an assertion. */
   ambiguous: boolean;

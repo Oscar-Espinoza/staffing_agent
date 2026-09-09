@@ -169,10 +169,10 @@ function dedupeOpportunities(
       `${row.AccountId}|${row.Amount}|${row.CloseDate}|${row.Estimated_Delivery_Hours__c}`;
     const original = seen.get(key);
     if (original) {
-      const accountName = accountNameById.get(row.AccountId) ?? row.AccountId;
+      const accountName = accountNameById.get(row.AccountId) ?? 'Unknown account';
       notes.push(
-        `${accountName} opportunity ${row.Id} appears to duplicate ${original.Id}; ` +
-          `it was excluded from demand calculations.`,
+        `Salesforce: Possible duplicate for ${accountName}: “${row.Name}” excluded from demand calculations; ` +
+          `retained “${original.Name}”. Account, amount, close date, and estimated hours match.`,
       );
       continue;
     }
